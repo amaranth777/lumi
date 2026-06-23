@@ -46,8 +46,10 @@ _COMMAND_MAP: dict[str, dict[str, tuple[str, str, Any]]] = {
     },
 
     # 吸尘器
-    "start": {"vacuum": ("vacuum", "start", None)},
-    "stop":  {"vacuum": ("vacuum", "stop",  None)},
+    "start":  {"vacuum": ("vacuum", "start",  None)},
+    "stop":   {"vacuum": ("vacuum", "stop",   None)},
+    "locate": {"vacuum": ("vacuum", "locate", None)},
+    "return_to_base": {"vacuum": ("vacuum", "return_to_base", None)},
 
     # 窗帘
     "open":  {"cover": ("cover", "open_cover",  None)},
@@ -55,6 +57,41 @@ _COMMAND_MAP: dict[str, dict[str, tuple[str, str, Any]]] = {
     "set_position": {
         "cover": ("cover", "set_cover_position", lambda p: {"position": p["position"]}),
     },
+
+    # 门锁
+    "lock":   {"lock": ("lock", "lock",   None)},
+    "unlock": {"lock": ("lock", "unlock", None)},
+
+    # 媒体播放器
+    "media_play":        {"media_player": ("media_player", "media_play",        None)},
+    "media_pause":       {"media_player": ("media_player", "media_pause",       None)},
+    "media_stop":        {"media_player": ("media_player", "media_stop",        None)},
+    "media_next_track":  {"media_player": ("media_player", "media_next_track",  None)},
+    "media_prev_track":  {"media_player": ("media_player", "media_previous_track", None)},
+    "set_volume": {
+        "media_player": ("media_player", "volume_set", lambda p: {"volume_level": p["volume"]}),
+    },
+    "volume_up":   {"media_player": ("media_player", "volume_up",   None)},
+    "volume_down": {"media_player": ("media_player", "volume_down", None)},
+    "volume_mute": {
+        "media_player": ("media_player", "volume_mute", lambda p: {"is_volume_muted": p.get("mute", True)}),
+    },
+    "select_source": {
+        "media_player": ("media_player", "select_source", lambda p: {"source": p["source"]}),
+    },
+
+    # 空气净化器 / 其他 select 设备
+    "select_option": {
+        "select": ("select", "select_option", lambda p: {"option": p["option"]}),
+    },
+
+    # number 实体
+    "set_value": {
+        "number": ("number", "set_value", lambda p: {"value": p["value"]}),
+    },
+
+    # 按钮
+    "press": {"button": ("button", "press", None)},
 }
 
 

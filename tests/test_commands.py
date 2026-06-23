@@ -140,6 +140,16 @@ class TestVacuumCommands:
         domain, service, data = resolve_command(device, "stop", {})
         assert service == "stop"
 
+    def test_locate(self):
+        device = _make_device("vacuum.dreame", "vacuum")
+        domain, service, data = resolve_command(device, "locate", {})
+        assert service == "locate"
+
+    def test_return_to_base(self):
+        device = _make_device("vacuum.dreame", "vacuum")
+        domain, service, data = resolve_command(device, "return_to_base", {})
+        assert service == "return_to_base"
+
 
 # ─── 窗帘命令 ─────────────────────────────────────────────────────────────────
 
@@ -160,6 +170,115 @@ class TestCoverCommands:
         domain, service, data = resolve_command(device, "set_position", {"position": 50})
         assert service == "set_cover_position"
         assert data["position"] == 50
+
+
+# ─── 门锁命令 ─────────────────────────────────────────────────────────────────
+
+class TestLockCommands:
+    def test_lock(self):
+        device = _make_device("lock.front_door", "lock")
+        domain, service, data = resolve_command(device, "lock", {})
+        assert domain == "lock"
+        assert service == "lock"
+        assert data["entity_id"] == "lock.front_door"
+
+    def test_unlock(self):
+        device = _make_device("lock.front_door", "lock")
+        domain, service, data = resolve_command(device, "unlock", {})
+        assert domain == "lock"
+        assert service == "unlock"
+
+
+# ─── 媒体播放器命令 ───────────────────────────────────────────────────────────
+
+class TestMediaPlayerCommands:
+    def test_media_play(self):
+        device = _make_device("media_player.tv", "media_player")
+        domain, service, data = resolve_command(device, "media_play", {})
+        assert domain == "media_player"
+        assert service == "media_play"
+
+    def test_media_pause(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "media_pause", {})
+        assert service == "media_pause"
+
+    def test_media_stop(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "media_stop", {})
+        assert service == "media_stop"
+
+    def test_media_next_track(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "media_next_track", {})
+        assert service == "media_next_track"
+
+    def test_media_prev_track(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "media_prev_track", {})
+        assert service == "media_previous_track"
+
+    def test_set_volume(self):
+        device = _make_device("media_player.speaker", "media_player")
+        _, service, data = resolve_command(device, "set_volume", {"volume": 0.5})
+        assert service == "volume_set"
+        assert data["volume_level"] == 0.5
+
+    def test_volume_up(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "volume_up", {})
+        assert service == "volume_up"
+
+    def test_volume_down(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, _ = resolve_command(device, "volume_down", {})
+        assert service == "volume_down"
+
+    def test_volume_mute_default_true(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, data = resolve_command(device, "volume_mute", {})
+        assert service == "volume_mute"
+        assert data["is_volume_muted"] is True
+
+    def test_volume_mute_explicit_false(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, _, data = resolve_command(device, "volume_mute", {"mute": False})
+        assert data["is_volume_muted"] is False
+
+    def test_select_source(self):
+        device = _make_device("media_player.tv", "media_player")
+        _, service, data = resolve_command(device, "select_source", {"source": "HDMI1"})
+        assert service == "select_source"
+        assert data["source"] == "HDMI1"
+
+    def test_media_play_wrong_type_returns_none(self):
+        device = _make_device("light.test", "light")
+        assert resolve_command(device, "media_play", {}) is None
+
+
+# ─── select / number / button 命令 ────────────────────────────────────────────
+
+class TestSelectNumberButtonCommands:
+    def test_select_option(self):
+        device = _make_device("select.purifier_mode", "select")
+        domain, service, data = resolve_command(device, "select_option", {"option": "sleep"})
+        assert domain == "select"
+        assert service == "select_option"
+        assert data["option"] == "sleep"
+
+    def test_set_value(self):
+        device = _make_device("number.fan_speed", "number")
+        domain, service, data = resolve_command(device, "set_value", {"value": 3})
+        assert domain == "number"
+        assert service == "set_value"
+        assert data["value"] == 3
+
+    def test_press_button(self):
+        device = _make_device("button.restart", "button")
+        domain, service, data = resolve_command(device, "press", {})
+        assert domain == "button"
+        assert service == "press"
+        assert data["entity_id"] == "button.restart"
 
 
 # ─── entity_id 始终出现在 service_data ───────────────────────────────────────
