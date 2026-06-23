@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Lumi",
     description="统一智能家居设备图与控制层",
-    version="0.0.0.3",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
