@@ -88,5 +88,16 @@ def get_config() -> LumiConfig:
             file_data.setdefault("ha", {})["token_file"] = os.environ["LUMI_HA_TOKEN_FILE"]
         if "LUMI_SERVER_TOKEN" in os.environ:
             file_data.setdefault("server", {})["token"] = os.environ["LUMI_SERVER_TOKEN"]
+        if "LUMI_SERVER_PORT" in os.environ:
+            try:
+                file_data.setdefault("server", {})["port"] = int(os.environ["LUMI_SERVER_PORT"])
+            except ValueError:
+                pass
+        if "LUMI_SERVER_HOST" in os.environ:
+            file_data.setdefault("server", {})["host"] = os.environ["LUMI_SERVER_HOST"]
+        if "LUMI_MILOCO_BASE_URL" in os.environ:
+            file_data.setdefault("miloco", {})["base_url"] = os.environ["LUMI_MILOCO_BASE_URL"]
+        if "LUMI_MILOCO_TOKEN" in os.environ:
+            file_data.setdefault("miloco", {})["token"] = os.environ["LUMI_MILOCO_TOKEN"]
         _config = LumiConfig(**file_data)
     return _config

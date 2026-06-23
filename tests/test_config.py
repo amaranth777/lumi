@@ -133,3 +133,33 @@ class TestGetConfigEnvOverrides:
         cfg = get_config()
         assert len(cfg.device_aliases) == 1
         assert cfg.device_aliases[0]["name"] == "净化器"
+
+    def test_env_server_port(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("LUMI_SERVER_PORT", "9999")
+        cfg = get_config()
+        assert cfg.server.port == 9999
+
+    def test_env_server_port_invalid_ignored(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("LUMI_SERVER_PORT", "notanint")
+        cfg = get_config()
+        assert cfg.server.port == 8810  # 默认值不变
+
+    def test_env_server_host(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("LUMI_SERVER_HOST", "0.0.0.0")
+        cfg = get_config()
+        assert cfg.server.host == "0.0.0.0"
+
+    def test_env_miloco_base_url(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("LUMI_MILOCO_BASE_URL", "http://10.0.0.2:1810")
+        cfg = get_config()
+        assert cfg.miloco.base_url == "http://10.0.0.2:1810"
+
+    def test_env_miloco_token(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("LUMI_MILOCO_TOKEN", "mytoken123")
+        cfg = get_config()
+        assert cfg.miloco.token == "mytoken123"
