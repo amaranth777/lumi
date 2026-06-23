@@ -29,6 +29,17 @@ def _get_ws_manager():
     except Exception:
         return None
 
+
+def _get_ha_client():
+    """懒加载 HA client——bridge 不持久化连接，按需创建。"""
+    try:
+        from lumi.ha.client import HAClient
+        import os
+        token_file = os.path.expanduser("~/.hermes/ha_token")
+        return HAClient(base_url="http://192.168.5.184:8123", token_file=token_file)
+    except Exception:
+        return None
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -149,8 +160,8 @@ async def _run_perception_async(run_id: str, payload: dict) -> None:
     """
     try:
         event = PerceptionEvent.from_miloco_webhook(payload)
-        # 不传 ha_client（bridge 层无 HA 直连），分析器走纯感知判断
-        analyzer = PerceptionAnalyzer(ha_client=None)
+        # 注入 HA client 让分析器能做交叉验证
+        analyzer = PerceptionAnalyzer(ha_client=_get_ha_client())
         decision = analyzer.analyze(event)
 
         logger.info(
