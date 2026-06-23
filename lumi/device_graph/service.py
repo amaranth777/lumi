@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from lumi.device_graph.commands import resolve_command
 from lumi.device_graph.fusion import ha_states_to_devices
+from lumi.device_graph.policy import PolicyEngine, get_default_policy_engine
 from lumi.device_graph.schema import (
     BatchCommandResponse,
     CommandResponse,
@@ -30,10 +31,12 @@ class DeviceGraphService:
         ha_client: HAClient | None = None,
         miloco_client: MilocoClient | None = None,
         aliases: list[dict[str, Any]] | None = None,
+        policy_engine: PolicyEngine | None = None,
     ) -> None:
         self.ha_client = ha_client
         self.miloco_client = miloco_client
         self.aliases = aliases or []
+        self.policy_engine = policy_engine or get_default_policy_engine()
         self._cached_graph: DeviceGraph | None = None
 
     def refresh(self) -> DeviceGraph:
@@ -106,6 +109,16 @@ class DeviceGraphService:
             return CommandResponse(
                 success=False,
                 message=f"设备不存在: {device_id}",
+                device_id=device_id,
+                command=command,
+            )
+
+        # 策略守卫：执行前检查是否被拦截
+        violation = self.policy_engine.evaluate(device, command, params)
+        if violation:
+            return CommandResponse(
+                success=False,
+                message=violation.reason,
                 device_id=device_id,
                 command=command,
             )
