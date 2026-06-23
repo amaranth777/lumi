@@ -81,9 +81,36 @@ app.include_router(ws_router)
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """健康检查端点。"""
-    return {"status": "ok"}
+async def health() -> dict:
+    """健康检查端点——包含版本、HA 连通性、设备数。"""
+    from lumi.deps import get_ha_client, get_device_graph_service
+
+    result: dict = {
+        "status": "ok",
+        "version": app.version,
+    }
+
+    # HA 连通性（不抛异常）
+    ha_client = get_ha_client()
+    if ha_client:
+        try:
+            states = ha_client.get_states()
+            result["ha"] = "ok"
+            result["device_count"] = len(states)
+        except Exception:
+            result["ha"] = "error"
+    else:
+        result["ha"] = "disabled"
+
+    # Miloco 连通性
+    from lumi.deps import get_miloco_client
+    miloco_client = get_miloco_client()
+    if miloco_client:
+        result["miloco"] = "ok" if miloco_client.is_available() else "error"
+    else:
+        result["miloco"] = "disabled"
+
+    return result
 
 
 def start_server() -> None:
