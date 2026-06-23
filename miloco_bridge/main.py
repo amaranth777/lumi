@@ -21,6 +21,14 @@ from fastapi.responses import JSONResponse
 from lumi.perception.events import PerceptionEvent
 from lumi.perception.analyzer import PerceptionAnalyzer
 
+# 懒加载 WS manager，避免循环导入
+def _get_ws_manager():
+    try:
+        from lumi.websocket import manager
+        return manager
+    except Exception:
+        return None
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -151,6 +159,18 @@ async def _run_perception_async(run_id: str, payload: dict) -> None:
         )
 
         if decision.should_notify and decision.message:
+            # 广播到 WebSocket 前端
+            ws_manager = _get_ws_manager()
+            if ws_manager:
+                asyncio.create_task(ws_manager.broadcast_perception(
+                    event_type=event.event_type.value,
+                    payload={
+                        "message": decision.message,
+                        "room": event.room,
+                        "reason": decision.reason,
+                    },
+                ))
+
             # 直接推微信：让 Hermes agent 转发消息
             prompt = (
                 f"请直接用 send_message 工具把以下内容推送到微信（target='weixin'），"
