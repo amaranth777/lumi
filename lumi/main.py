@@ -127,7 +127,7 @@ async def status() -> dict:
         svc = get_device_graph_service()
         summary = svc.get_summary()
         result["devices"] = {
-            "total": summary.total,
+            "total": summary.total_devices,
             "by_platform": summary.by_platform,
             "by_type": summary.by_type,
             "rooms": summary.rooms,
