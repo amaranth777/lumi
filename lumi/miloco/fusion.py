@@ -6,6 +6,13 @@ from typing import Any
 
 from lumi.device_graph.schema import Device
 
+# 无意义的 Mi Home 房间名（地区名、默认名等），过滤掉不用
+_INVALID_ROOM_NAMES: set[str] = {
+    "公寓", "apartment", "home", "家", "house",
+    "乌鲁木齐", "北京", "上海", "广州", "深圳", "成都", "杭州",
+    "其他", "默认", "default", "未知", "unknown", "",
+}
+
 # Miloco 设备 category → Lumi 类型
 _CATEGORY_TYPE_MAP: dict[str, str] = {
     "light": "light",
@@ -62,7 +69,8 @@ def miloco_devices_to_lumi(
 
         name: str = raw.get("name", did)
         category: str = raw.get("category", "")
-        room_name: str | None = raw.get("room_name") or None
+        _rn = raw.get("room_name") or ""
+        room_name: str | None = _rn if _rn and _rn not in _INVALID_ROOM_NAMES else None
         online: bool = raw.get("online", False)
         model: str = raw.get("model", "")
 
