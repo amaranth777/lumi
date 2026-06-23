@@ -1,0 +1,19 @@
+[Unit]
+Description=Miloco-Hermes Bridge（感知事件 → Hermes Agent）
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__
+ExecStart=__REPO_DIR__/.venv/bin/python -m uvicorn miloco_bridge.main:app --host 127.0.0.1 --port 18789
+Restart=on-failure
+RestartSec=5s
+
+# 绕过 Clash 代理（本地服务直连）
+Environment=NO_PROXY=127.0.0.1,localhost
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

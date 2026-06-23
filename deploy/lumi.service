@@ -1,19 +1,19 @@
 [Unit]
-Description=Lumi 智能家居统一层
+Description=Lumi 统一家庭智能体平台
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/amaranth/.local/bin/lumi
+WorkingDirectory=__REPO_DIR__
+ExecStart=__REPO_DIR__/.venv/bin/python -m uvicorn lumi.main:app --host 127.0.0.1 --port 18788
 Restart=on-failure
 RestartSec=5s
-WorkingDirectory=/home/amaranth
 
 # 环境变量可在此覆盖
 # Environment=LUMI_HA_BASE_URL=http://192.168.5.184:8123
-# Environment=LUMI_SERVER_TOKEN=your-token-here
+# Environment=LUMI_SERVER_TOKEN=your_token_here
 
-# 代理设置（Lumi 内部会清掉 HA 请求的代理，这里设置的是全局默认）
+# 代理设置（Lumi 内部会清掉 HA 请求的代理）
 Environment=NO_PROXY=127.0.0.1,localhost,192.168.0.0/16
 
 StandardOutput=journal
