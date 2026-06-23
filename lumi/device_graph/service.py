@@ -268,12 +268,27 @@ class DeviceGraphService:
     def batch_execute_command(
         self, device_ids: list[str], command: str, params: dict[str, Any]
     ) -> BatchCommandResponse:
-        """批量执行命令。"""
-        results = []
-        for device_id in device_ids:
-            result = self.execute_command(device_id, command, params)
-            results.append(result)
-        
+        """批量执行命令（ThreadPoolExecutor 并发）。"""
+        if not device_ids:
+            return BatchCommandResponse(total=0, success=0, failed=0, results=[])
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        results: list[CommandResponse] = [None] * len(device_ids)  # type: ignore[list-item]
+
+        def _run(idx: int, device_id: str) -> tuple[int, CommandResponse]:
+            return idx, self.execute_command(device_id, command, params)
+
+        max_workers = min(len(device_ids), 8)  # 最多 8 个并发线程
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_run, i, did): i
+                for i, did in enumerate(device_ids)
+            }
+            for future in as_completed(futures):
+                idx, result = future.result()
+                results[idx] = result
+
         success_count = sum(1 for r in results if r.success)
         return BatchCommandResponse(
             total=len(results),
