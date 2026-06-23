@@ -35,11 +35,27 @@ class ServerConfig(BaseModel):
     token: str = Field(default="", description="API 鉴权 token")
 
 
+class MilocoConfig(BaseModel):
+    """Miloco 配置。"""
+
+    enabled: bool = Field(default=False, description="是否启用 Miloco 集成")
+    base_url: str = Field(
+        default="http://127.0.0.1:1810",
+        description="Miloco 服务地址",
+    )
+    token: str = Field(default="", description="Miloco API token（从 ~/.miloco/config.json 读取）")
+    token_file: str = Field(
+        default="~/.miloco/config.json",
+        description="Miloco 配置文件路径（自动读取 token）",
+    )
+
+
 class LumiConfig(BaseModel):
     """Lumi 全局配置。"""
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     ha: HAConfig = Field(default_factory=HAConfig)
+    miloco: MilocoConfig = Field(default_factory=MilocoConfig)
     device_aliases: list[dict[str, Any]] = Field(
         default_factory=list,
         description="设备手动映射配置",

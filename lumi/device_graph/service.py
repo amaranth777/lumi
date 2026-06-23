@@ -15,9 +15,11 @@ from lumi.device_graph.schema import (
     DeviceGraph,
     DeviceGraphSummary,
 )
+from lumi.miloco.fusion import miloco_devices_to_lumi
 
 if TYPE_CHECKING:
     from lumi.ha.client import HAClient
+    from lumi.miloco.client import MilocoClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,11 @@ class DeviceGraphService:
     def __init__(
         self,
         ha_client: HAClient | None = None,
+        miloco_client: MilocoClient | None = None,
         aliases: list[dict[str, Any]] | None = None,
     ) -> None:
         self.ha_client = ha_client
+        self.miloco_client = miloco_client
         self.aliases = aliases or []
         self._cached_graph: DeviceGraph | None = None
 
@@ -38,6 +42,25 @@ class DeviceGraphService:
             states = self.ha_client.get_states()
             devices.extend(ha_states_to_devices(states, self.aliases))
             logger.info("从 HA 融合了 %d 个设备", len(devices))
+
+        if self.miloco_client:
+            miloco_devs = self.miloco_client.get_device_list()
+            lumi_devs = miloco_devices_to_lumi(miloco_devs)
+            # 去重：如果同一设备已经有 HA 数据，Miloco 补充 room 等元信息
+            ha_ids = {d.id for d in devices}
+            new_devs = []
+            for dev in lumi_devs:
+                # Miloco id 是 miloco.<did>，HA 里可能也有对应设备
+                if dev.id not in ha_ids:
+                    new_devs.append(dev)
+                else:
+                    # 用 Miloco 的 room 补充 HA 设备（如果 HA 没有识别出房间）
+                    ha_dev = next(d for d in devices if d.id == dev.id)
+                    if not ha_dev.room and dev.room:
+                        ha_dev = ha_dev.model_copy(update={"room": dev.room})
+                        devices = [ha_dev if d.id == dev.id else d for d in devices]
+            devices.extend(new_devs)
+            logger.info("从 Miloco 融合了 %d 个新设备", len(new_devs))
 
         rooms: dict[str, list[str]] = {}
         for dev in devices:
