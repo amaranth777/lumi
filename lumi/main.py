@@ -52,10 +52,12 @@ async def lifespan(app: FastAPI):
         logger.info("HA 事件监听器已停止")
 
 
+import lumi as _lumi_pkg
+
 app = FastAPI(
     title="Lumi",
     description="统一智能家居设备图与控制层",
-    version="0.3.0",
+    version=_lumi_pkg.__version__,
     lifespan=lifespan,
 )
 
