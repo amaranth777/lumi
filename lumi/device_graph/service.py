@@ -6,8 +6,9 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from lumi.device_graph.commands import resolve_command
 from lumi.device_graph.fusion import ha_states_to_devices
-from lumi.device_graph.schema import Device, DeviceGraph, DeviceGraphSummary
+from lumi.device_graph.schema import CommandResponse, Device, DeviceGraph, DeviceGraphSummary
 
 if TYPE_CHECKING:
     from lumi.ha.client import HAClient
@@ -63,4 +64,48 @@ class DeviceGraphService:
             by_platform=by_platform,
             by_room={r: len(ids) for r, ids in graph.rooms.items()},
             rooms=sorted(graph.rooms.keys()),
+        )
+
+    def execute_command(
+        self, device_id: str, command: str, params: dict[str, Any]
+    ) -> CommandResponse:
+        """执行设备控制命令。"""
+        # 找到设备
+        graph = self.get_graph()
+        device = next((d for d in graph.devices if d.id == device_id), None)
+        if not device:
+            return CommandResponse(
+                success=False,
+                message=f"设备不存在: {device_id}",
+                device_id=device_id,
+                command=command,
+            )
+
+        # 解析命令
+        resolved = resolve_command(device, command, params)
+        if not resolved:
+            return CommandResponse(
+                success=False,
+                message=f"不支持的命令: {command} (设备类型: {device.type})",
+                device_id=device_id,
+                command=command,
+            )
+
+        domain, service, service_data = resolved
+
+        # 执行（目前只支持 HA）
+        if device.platform != "ha" or not self.ha_client:
+            return CommandResponse(
+                success=False,
+                message=f"平台不支持控制: {device.platform}",
+                device_id=device_id,
+                command=command,
+            )
+
+        success = self.ha_client.call_service(domain, service, service_data)
+        return CommandResponse(
+            success=success,
+            message="执行成功" if success else "HA service 调用失败",
+            device_id=device_id,
+            command=command,
         )

@@ -47,3 +47,19 @@ class DeviceGraphSummary(BaseModel):
     by_platform: dict[str, int] = Field(default_factory=dict, description="按平台统计")
     by_room: dict[str, int] = Field(default_factory=dict, description="按房间统计")
     rooms: list[str] = Field(default_factory=list, description="房间列表")
+
+
+class CommandRequest(BaseModel):
+    """设备控制命令请求。"""
+
+    command: str = Field(..., description="命令类型（toggle/turn_on/turn_off/set_temperature...）")
+    params: dict[str, Any] = Field(default_factory=dict, description="命令参数")
+
+
+class CommandResponse(BaseModel):
+    """设备控制命令响应。"""
+
+    success: bool = Field(..., description="是否成功")
+    message: str = Field(default="", description="结果消息")
+    device_id: str = Field(..., description="设备ID")
+    command: str = Field(..., description="执行的命令")
