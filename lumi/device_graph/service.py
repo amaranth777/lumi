@@ -110,7 +110,18 @@ class DeviceGraphService:
                 command=command,
             )
 
-        # 解析命令
+        # Miloco (MIoT) 平台控制 — 不走 resolve_command，直接透传
+        if device.platform == "miloco":
+            if not self.miloco_client:
+                return CommandResponse(
+                    success=False,
+                    message="Miloco client 未初始化",
+                    device_id=device_id,
+                    command=command,
+                )
+            return self._execute_miloco_command(device, command, params)
+
+        # 解析命令（HA 平台）
         resolved = resolve_command(device, command, params)
         if not resolved:
             return CommandResponse(
@@ -122,20 +133,81 @@ class DeviceGraphService:
 
         domain, service, service_data = resolved
 
-        # 执行（目前只支持 HA）
-        if device.platform != "ha" or not self.ha_client:
+        # HA 平台控制
+        if device.platform == "ha":
+            if not self.ha_client:
+                return CommandResponse(
+                    success=False,
+                    message="HA client 未初始化",
+                    device_id=device_id,
+                    command=command,
+                )
+            success = self.ha_client.call_service(domain, service, service_data)
             return CommandResponse(
-                success=False,
-                message=f"平台不支持控制: {device.platform}",
+                success=success,
+                message="执行成功" if success else "HA service 调用失败",
                 device_id=device_id,
                 command=command,
             )
 
-        success = self.ha_client.call_service(domain, service, service_data)
+        return CommandResponse(
+            success=False,
+            message=f"平台不支持控制: {device.platform}",
+            device_id=device_id,
+            command=command,
+        )
+
+    def _execute_miloco_command(
+        self, device: "Device", command: str, params: dict[str, Any]
+    ) -> "CommandResponse":
+        """将 Lumi 命令转换为 MIoT set_property / call_action 调用。"""
+        from lumi.device_graph.schema import CommandResponse  # 局部避免循环
+
+        did: str = device.attributes.get("did", "")
+        if not did:
+            return CommandResponse(
+                success=False,
+                message=f"设备缺少 did: {device.id}",
+                device_id=device.id,
+                command=command,
+            )
+
+        success = False
+        # 通用开关 → MIoT prop.2.1 (on/off)
+        if command == "turn_on":
+            success = self.miloco_client.set_property(did, 2, 1, True)
+        elif command == "turn_off":
+            success = self.miloco_client.set_property(did, 2, 1, False)
+        elif command == "toggle":
+            # 先查状态再翻转
+            status = self.miloco_client.get_device_status(did)
+            props = {p["iid"]: p["value"] for p in status.get("properties", []) if "iid" in p}
+            current = props.get("prop.2.1", False)
+            success = self.miloco_client.set_property(did, 2, 1, not current)
+        elif command == "set_property":
+            # 直接透传：params = {siid, piid, value}
+            siid = int(params.get("siid", 2))
+            piid = int(params.get("piid", 1))
+            value = params.get("value")
+            success = self.miloco_client.set_property(did, siid, piid, value)
+        elif command == "call_action":
+            # params = {siid, aiid, params(list)}
+            siid = int(params.get("siid", 2))
+            aiid = int(params.get("aiid", 1))
+            action_params = params.get("params", [])
+            success = self.miloco_client.call_action(did, siid, aiid, action_params)
+        else:
+            return CommandResponse(
+                success=False,
+                message=f"Miloco 平台不支持命令: {command}",
+                device_id=device.id,
+                command=command,
+            )
+
         return CommandResponse(
             success=success,
-            message="执行成功" if success else "HA service 调用失败",
-            device_id=device_id,
+            message="执行成功" if success else "Miloco 调用失败",
+            device_id=device.id,
             command=command,
         )
 
