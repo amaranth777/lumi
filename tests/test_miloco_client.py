@@ -194,3 +194,124 @@ class TestIsAvailable:
         client = _make_client()
         with patch("urllib.request.urlopen", side_effect=Exception("refused")):
             assert client.is_available() is False
+
+
+# ─── get_home ─────────────────────────────────────────────────────────────────
+
+class TestGetHome:
+    def test_get_home_success(self):
+        client = _make_client()
+        home_data = {"rooms": [{"id": "r1", "name": "客厅"}], "devices": []}
+        with patch("urllib.request.urlopen", return_value=FakeHTTPResponse(home_data)):
+            result = client.get_home()
+        assert result == home_data
+
+    def test_get_home_with_refresh(self):
+        client = _make_client()
+        captured = {}
+
+        def fake_open(req, timeout=None):
+            captured["url"] = req.full_url
+            return FakeHTTPResponse({})
+
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            client.get_home(refresh=True)
+
+        assert "refresh=true" in captured["url"]
+
+    def test_get_home_failure_returns_empty(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", side_effect=Exception("timeout")):
+            result = client.get_home()
+        assert result == {}
+
+
+# ─── get_device_status ────────────────────────────────────────────────────────
+
+class TestGetDeviceStatus:
+    def test_get_status_success(self):
+        client = _make_client()
+        status_data = {"data": {"power": True, "brightness": 80}}
+        with patch("urllib.request.urlopen", return_value=FakeHTTPResponse(status_data)):
+            result = client.get_device_status("did123")
+        assert result == {"power": True, "brightness": 80}
+
+    def test_get_status_with_iids(self):
+        client = _make_client()
+        captured = {}
+
+        def fake_open(req, timeout=None):
+            captured["url"] = req.full_url
+            return FakeHTTPResponse({"data": {}})
+
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            client.get_device_status("did123", iids=["prop.2.1", "prop.3.1"])
+
+        assert "prop.2.1" in captured["url"]
+
+    def test_get_status_failure_returns_empty(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", side_effect=Exception("error")):
+            result = client.get_device_status("did123")
+        assert result == {}
+
+
+# ─── set_properties ───────────────────────────────────────────────────────────
+
+class TestSetProperties:
+    def test_set_properties_success(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", return_value=FakeHTTPResponse({"code": 0})):
+            result = client.set_properties("did123", [{"iid": "prop.2.1", "value": True}])
+        assert result is True
+
+    def test_set_properties_failure(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", return_value=FakeHTTPResponse({"code": 1})):
+            result = client.set_properties("did123", [{"iid": "prop.2.1", "value": False}])
+        assert result is False
+
+    def test_set_properties_sends_correct_body(self):
+        client = _make_client()
+        captured = {}
+
+        def fake_open(req, timeout=None):
+            captured["body"] = json.loads(req.data)
+            return FakeHTTPResponse({"code": 0})
+
+        props = [{"iid": "prop.2.1", "value": 100}, {"iid": "prop.2.2", "value": "auto"}]
+        with patch("urllib.request.urlopen", side_effect=fake_open):
+            client.set_properties("did123", props)
+
+        assert captured["body"]["type"] == "set_properties"
+        assert captured["body"]["properties"] == props
+
+    def test_set_properties_exception_returns_false(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", side_effect=Exception("network error")):
+            result = client.set_properties("did123", [])
+        assert result is False
+
+
+# ─── get_device_graph_summary ─────────────────────────────────────────────────
+
+class TestGetDeviceGraphSummary:
+    def test_get_summary_success(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen",
+                   return_value=FakeHTTPResponse({"summary": "客厅有3个设备"})):
+            result = client.get_device_graph_summary()
+        assert result == "客厅有3个设备"
+
+    def test_get_summary_missing_key_returns_empty(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", return_value=FakeHTTPResponse({"other": "data"})):
+            result = client.get_device_graph_summary()
+        assert result == ""
+
+    def test_get_summary_failure_returns_empty(self):
+        client = _make_client()
+        with patch("urllib.request.urlopen", side_effect=Exception("timeout")):
+            result = client.get_device_graph_summary()
+        assert result == ""
+
