@@ -25,4 +25,8 @@ def get_ha_client() -> HAClient | None:
 def get_device_graph_service() -> DeviceGraphService:
     """获取设备图服务（单例）。"""
     ha_client = get_ha_client()
-    return DeviceGraphService(ha_client=ha_client)
+    config = get_config()
+    return DeviceGraphService(
+        ha_client=ha_client,
+        aliases=config.device_aliases,
+    )

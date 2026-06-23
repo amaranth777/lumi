@@ -47,15 +47,23 @@ _DOMAIN_CAPABILITIES: dict[str, list[str]] = {
 }
 
 # 中文房间关键词（从 entity_id / friendly_name 推断）
+# 优先级从上到下，匹配到第一个就停止
 _ROOM_KEYWORDS: list[tuple[str, str]] = [
-    (r"living|客厅", "客厅"),
-    (r"bedroom|卧室|master", "主卧"),
-    (r"kitchen|厨房", "厨房"),
-    (r"bathroom|卫生间|toilet", "卫生间"),
-    (r"balcony|阳台", "阳台"),
-    (r"study|书房|office", "书房"),
-    (r"dining|餐厅", "餐厅"),
-    (r"entrance|玄关|doorway", "玄关"),
+    (r"卧室|bedroom|master_bedroom", "卧室"),
+    (r"客厅|living", "客厅"),
+    (r"厨房|kitchen", "厨房"),
+    (r"卫生间|bathroom|toilet|restroom|washroom", "卫生间"),
+    (r"阳台|balcony", "阳台"),
+    (r"书房|study|office", "书房"),
+    (r"餐厅|dining", "餐厅"),
+    (r"玄关|entrance|doorway|hallway", "玄关"),
+    (r"次卧|second_bedroom|guest_room", "次卧"),
+    (r"儿童房|kids_room|children", "儿童房"),
+    (r"衣帽间|wardrobe|cloakroom", "衣帽间"),
+    (r"储藏室|storage|storeroom", "储藏室"),
+    (r"露台|terrace|rooftop", "露台"),
+    (r"车库|garage", "车库"),
+    (r"地下室|basement", "地下室"),
 ]
 
 
@@ -67,8 +75,30 @@ def _infer_room(entity_id: str, friendly_name: str) -> str | None:
     return None
 
 
-def ha_states_to_devices(states: list[dict[str, Any]]) -> list[Device]:
-    """将 HA states 列表转换为 Device 列表。"""
+def ha_states_to_devices(
+    states: list[dict[str, Any]],
+    aliases: list[dict[str, Any]] | None = None,
+) -> list[Device]:
+    """将 HA states 列表转换为 Device 列表。
+    
+    Args:
+        states: HA /api/states 返回的状态列表
+        aliases: 手动配置的别名映射列表，每项格式：
+            {
+                "entity_id": "fan.zhimi_airpurifier_ma2",
+                "name": "客厅空气净化器",
+                "room": "客厅",
+                "icon": "mdi:air-purifier"  # 可选
+            }
+    """
+    # 构建别名查找表
+    alias_map: dict[str, dict[str, Any]] = {}
+    if aliases:
+        for alias in aliases:
+            eid = alias.get("entity_id")
+            if eid:
+                alias_map[eid] = alias
+
     devices: list[Device] = []
     for state in states:
         entity_id: str = state.get("entity_id", "")
@@ -79,15 +109,21 @@ def ha_states_to_devices(states: list[dict[str, Any]]) -> list[Device]:
         attrs: dict[str, Any] = state.get("attributes", {})
         friendly_name: str = attrs.get("friendly_name", entity_id)
 
+        # 应用别名覆盖
+        alias = alias_map.get(entity_id, {})
+        name = alias.get("name", friendly_name)
+        room = alias.get("room") or _infer_room(entity_id, friendly_name)
+        icon = alias.get("icon") or attrs.get("icon")
+
         devices.append(Device(
             id=entity_id,
-            name=friendly_name,
+            name=name,
             type=_DOMAIN_TYPE_MAP.get(domain, domain),
             platform="ha",
             state=state.get("state"),
             attributes=attrs,
             capabilities=_DOMAIN_CAPABILITIES.get(domain, []),
-            room=_infer_room(entity_id, friendly_name),
-            icon=attrs.get("icon"),
+            room=room,
+            icon=icon,
         ))
     return devices
