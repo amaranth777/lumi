@@ -235,11 +235,18 @@ class TestAnalyzerNewEventTypes:
 
     def test_litter_box_weight_low_with_weight(self) -> None:
         event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})
-        event.context["weight_kg"] = 1.5
+        event.context["weight_kg"] = 0.5  # 低于默认阈值 1.0kg
         d = self.analyzer.analyze(event)
         assert d.should_notify is True
         assert "猫砂" in (d.message or "")
-        assert "1.50" in (d.message or "")
+        assert "0.50" in (d.message or "")
+
+    def test_litter_box_weight_low_above_threshold_no_notify(self) -> None:
+        """余量高于阈值时不推送（误触发保护）。"""
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})
+        event.context["weight_kg"] = 2.5  # 高于默认阈值 1.0kg
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is False
 
     def test_litter_box_weight_low_no_weight(self) -> None:
         event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})

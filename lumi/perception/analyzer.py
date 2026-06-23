@@ -210,12 +210,24 @@ class PerceptionAnalyzer:
 
     def _analyze_litter_box_weight_low(self, event: PerceptionEvent) -> PerceptionDecision:
         """猫砂余量不足——通知补砂。"""
+        from lumi.config import get_config
+        pet_cfg = get_config().pet
+
         weight = event.context.get("weight_kg")
+        threshold = pet_cfg.litter_low_kg
+
+        # 如果有余量数据且高于阈值，说明是误触发，不推送
+        if weight is not None and weight >= threshold:
+            return PerceptionDecision(
+                should_notify=False,
+                reason=f"猫砂余量 {weight:.2f}kg 高于阈值 {threshold}kg，无需补充",
+            )
+
         weight_str = f"（当前 {weight:.2f}kg）" if weight is not None else ""
         return PerceptionDecision(
             should_notify=True,
             message=f"🪣 猫砂余量不足{weight_str}，请及时补充猫砂。",
-            reason="猫砂余量低于阈值",
+            reason=f"猫砂余量低于 {threshold}kg",
         )
 
     def _analyze_pet_weighed(self, event: PerceptionEvent) -> PerceptionDecision:
