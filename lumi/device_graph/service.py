@@ -289,7 +289,7 @@ class DeviceGraphService:
         return [d for d in graph.devices if d.id in device_ids]
 
     def search_devices(self, query: str) -> list[Device]:
-        """搜索设备（name/id/room）。"""
+        """搜索设备（name/id/room/type）。"""
         graph = self.get_graph()
         query_lower = query.lower()
         return [
@@ -297,4 +297,5 @@ class DeviceGraphService:
             if query_lower in d.name.lower()
             or query_lower in d.id.lower()
             or (d.room and query_lower in d.room.lower())
+            or query_lower in d.type.lower()
         ]

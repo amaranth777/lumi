@@ -341,6 +341,25 @@ class TestSearchDevices:
         assert len(svc.search_devices("bedroom")) == 1
         assert len(svc.search_devices("BEDROOM")) == 1
 
+    def test_search_by_type(self):
+        states = _make_ha_states(
+            ("light.desk", "on"),
+            ("switch.fan", "off"),
+            ("sensor.temp", "22"),
+        )
+        svc = _make_service(ha_states=states)
+        lights = svc.search_devices("light")
+        assert any(d.id == "light.desk" for d in lights)
+        # switch 不应出现在 light 搜索结果里（除非名字/ID 包含 light）
+        assert all(d.id != "switch.fan" for d in lights)
+
+    def test_search_by_type_vacuum(self):
+        states = _make_ha_states(("vacuum.dreame", "docked"))
+        svc = _make_service(ha_states=states)
+        results = svc.search_devices("vacuum")
+        assert len(results) == 1
+        assert results[0].id == "vacuum.dreame"
+
 
 # ─── get_devices_by_room ──────────────────────────────────────────────────────
 
