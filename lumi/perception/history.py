@@ -58,6 +58,7 @@ class PerceptionHistory:
         self,
         max_events: int = _DEFAULT_MAX_EVENTS,
         log_path: str = _DEFAULT_LOG_PATH,
+        load_from_file: bool = True,
     ) -> None:
         self._events: deque[HistoryEntry] = deque(maxlen=max_events)
         self._log_path = log_path
@@ -65,6 +66,9 @@ class PerceptionHistory:
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
         except Exception:
             pass  # 目录创建失败时静默降级，写入时再处理
+
+        if load_from_file:
+            self._load_from_file(max_events)
 
     def record(self, entry: HistoryEntry) -> None:
         """记录一条事件，追加到内存缓冲和文件。"""
@@ -116,6 +120,40 @@ class PerceptionHistory:
                 f.write(json.dumps(entry.to_dict(), ensure_ascii=False) + "\n")
         except Exception as e:
             logger.warning("写感知历史日志失败: %s", e)
+
+    def _load_from_file(self, limit: int) -> None:
+        """从 JSONL 文件加载最近 limit 条历史到内存 ring buffer。"""
+        if not os.path.exists(self._log_path):
+            return
+        try:
+            with open(self._log_path, encoding="utf-8") as f:
+                lines = f.readlines()
+            # 只取最后 limit 行
+            for line in lines[-limit:]:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                    entry = HistoryEntry(
+                        ts=d.get("ts", ""),
+                        event_id=d.get("event_id", ""),
+                        event_type=d.get("event_type", "unknown"),
+                        room=d.get("room"),
+                        camera_id=d.get("camera_id"),
+                        should_notify=bool(d.get("should_notify", False)),
+                        notified=bool(d.get("notified", False)),
+                        skipped=bool(d.get("skipped", False)),
+                        skip_reason=d.get("skip_reason", ""),
+                        message=d.get("message"),
+                        context=d.get("context", {}),
+                    )
+                    self._events.append(entry)
+                except Exception:
+                    continue  # 跳过损坏的行
+            logger.info("从文件恢复感知历史 %d 条: %s", len(self._events), self._log_path)
+        except Exception as e:
+            logger.warning("加载感知历史失败: %s", e)
 
 
 # 全局单例

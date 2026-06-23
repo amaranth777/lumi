@@ -168,10 +168,77 @@ class TestHistoryPersistence:
 
     def test_invalid_log_path_does_not_crash(self):
         """写入失败时不应崩溃（静默降级）。"""
-        h = PerceptionHistory(max_events=10, log_path="/nonexistent_dir/test.jsonl")
-        # 不应抛异常
+        h = PerceptionHistory(max_events=10, log_path="/nonexistent_dir/test.jsonl", load_from_file=False)
         h.record(_entry())
         assert len(h.get_recent()) == 1
+
+
+# ─── 持久化恢复 ───────────────────────────────────────────────────────────────
+
+class TestHistoryRestore:
+    def test_loads_from_existing_file(self, tmp_path):
+        """重启后从 JSONL 文件恢复历史。"""
+        log_file = tmp_path / "perception.jsonl"
+        # 先写入几条
+        h1 = PerceptionHistory(max_events=10, log_path=str(log_file), load_from_file=False)
+        h1.record(_entry(event_type="litter_box_full", ts="2026-06-23T08:00:00"))
+        h1.record(_entry(event_type="pet_detected", ts="2026-06-23T09:00:00"))
+
+        # 新实例从文件恢复
+        h2 = PerceptionHistory(max_events=10, log_path=str(log_file), load_from_file=True)
+        events = h2.get_recent()
+        assert len(events) == 2
+        assert events[0].event_type == "pet_detected"  # 最新在前
+        assert events[1].event_type == "litter_box_full"
+
+    def test_no_file_does_not_crash(self, tmp_path):
+        """文件不存在时静默跳过。"""
+        h = PerceptionHistory(
+            max_events=10,
+            log_path=str(tmp_path / "nonexistent.jsonl"),
+            load_from_file=True,
+        )
+        assert len(h.get_recent()) == 0
+
+    def test_respects_max_events_on_load(self, tmp_path):
+        """加载时只保留最近 max_events 条。"""
+        log_file = tmp_path / "perception.jsonl"
+        h1 = PerceptionHistory(max_events=100, log_path=str(log_file), load_from_file=False)
+        for i in range(10):
+            h1.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+
+        # max_events=3 时只保留最后 3 条
+        h2 = PerceptionHistory(max_events=3, log_path=str(log_file), load_from_file=True)
+        assert len(h2.get_recent(limit=100)) == 3
+
+    def test_skips_corrupt_lines(self, tmp_path):
+        """跳过损坏的 JSONL 行，不崩溃。"""
+        log_file = tmp_path / "perception.jsonl"
+        log_file.write_text(
+            '{"ts":"2026-06-23T08:00:00","event_id":"e1","event_type":"pet_detected",'
+            '"room":null,"camera_id":null,"should_notify":true,"notified":true,'
+            '"skipped":false,"skip_reason":"","message":"ok","context":{}}\n'
+            'THIS IS NOT JSON\n'
+            '{"ts":"2026-06-23T09:00:00","event_id":"e2","event_type":"litter_box_full",'
+            '"room":"卫生间","camera_id":null,"should_notify":true,"notified":true,'
+            '"skipped":false,"skip_reason":"","message":"满了","context":{}}\n'
+        )
+        h = PerceptionHistory(max_events=10, log_path=str(log_file), load_from_file=True)
+        events = h.get_recent()
+        assert len(events) == 2  # 损坏行被跳过
+
+    def test_new_records_append_after_restore(self, tmp_path):
+        """恢复后新记录正常追加。"""
+        log_file = tmp_path / "perception.jsonl"
+        h1 = PerceptionHistory(max_events=10, log_path=str(log_file), load_from_file=False)
+        h1.record(_entry(event_type="old_event", ts="2026-06-23T08:00:00"))
+
+        h2 = PerceptionHistory(max_events=10, log_path=str(log_file), load_from_file=True)
+        h2.record(_entry(event_type="new_event", ts="2026-06-23T10:00:00"))
+
+        events = h2.get_recent()
+        assert len(events) == 2
+        assert events[0].event_type == "new_event"
 
 
 # ─── history API 端点 ─────────────────────────────────────────────────────────
