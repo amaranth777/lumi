@@ -2,6 +2,28 @@
 
 All notable changes to Lumi are documented here.
 
+## [0.5.0] — 2026-06
+
+### Added
+- **`POST /api/perception/webhook`** — 感知 webhook 接收端，触发 PerceptionAnalyzer → HermesBridge 通知链，支持 WebSocket 广播
+- **`POST /api/perception/webhook/test`** — dry run 端点，分析但不推送（调试用）
+- **`GET /api/perception/events/types`** — 列出所有支持的感知事件类型
+- **`PET_WEIGHED` + `LITTER_BOX_WEIGHT_LOW`** — 新增感知事件类型，体重异常通知 + 补砂提醒
+- **`from_miloco_webhook` context 提取** — 自动从 payload 提取 `weight_kg`，支持多种 key 名及嵌套 `data` 字段
+- **HAClient 指数退避重试** — retries=3, retry_delay=2s, backoff=2x
+- **`search_devices` type 字段搜索** — 可直接按设备类型过滤（`search('light')`）
+- **`batch_execute_command` 并发执行** — ThreadPoolExecutor(max_workers=8)，空列表立即返回
+- **`GET /api/device_graph/types`** — 列出设备类型分布（by_type + counts）
+- **`LUMI_CACHE_TTL` / `LUMI_SERVER_PORT`** — 补全所有环境变量覆盖
+- **`infer_room` 公共接口** — Miloco converter 复用 HA 同款房间推断逻辑
+- **lock / media_player / select / number / button / vacuum** 命令支持（+19 条）
+
+### Tests
+- 461 cases（+103 vs 0.4.0），总覆盖率 90% → 95%
+- 新增：`/api/status`、`_hermes_send` proxy清理、HA listener重连、websocket endpoint、perception webhook 路由
+
+---
+
 ## [0.4.0] — 2026-06
 
 ### Added

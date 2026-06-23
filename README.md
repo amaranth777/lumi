@@ -106,6 +106,9 @@ lumi
 | `GET /api/scenes` | 列出所有预设场景 |
 | `POST /api/scenes` | 创建/更新场景 |
 | `POST /api/scenes/{id}/execute` | 执行场景 |
+| `POST /api/perception/webhook` | 接收 Miloco 感知 webhook → 分析 → 微信通知 |
+| `POST /api/perception/webhook/test` | 感知 webhook dry run（分析但不推送） |
+| `GET /api/perception/events/types` | 列出所有支持的感知事件类型 |
 | `WS /ws/device_graph` | 实时状态推送（HA事件驱动，<100ms 延迟） |
 | `GET /ui/` | 内置演示页面 |
 | `GET /docs` | 自动生成的 API 文档 |
