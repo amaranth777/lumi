@@ -144,7 +144,10 @@ async def receive_webhook(
     background_tasks.add_task(_broadcast_perception, event)
 
     result = _process_webhook(event, notify=True)
-    _record_history(event, result)
+    try:
+        _record_history(event, result)
+    except Exception as e:
+        logger.debug("记录感知历史失败（非致命）: %s", e)
     return result
 
 

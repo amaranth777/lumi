@@ -287,3 +287,95 @@ class TestEventTypesList:
             data = c.get("/api/perception/events/types").json()
         for et in PerceptionEventType:
             assert et.value in data["event_types"], f"{et.value} missing"
+
+
+# ─── 降级路径覆盖 ──────────────────────────────────────────────────────────────
+
+class TestWebhookFallback:
+    def test_from_miloco_webhook_failure_falls_back(self):
+        """from_miloco_webhook 抛异常时，使用降级 PerceptionEvent。"""
+        with _client() as (c, _):
+            with patch("lumi.perception.router.PerceptionEvent") as mock_cls:
+                # 让 from_miloco_webhook 抛异常，构造器正常工作
+                mock_event = MagicMock()
+                mock_event.event_type.value = "unknown"
+                mock_event.event_id = ""
+                mock_event.room = None
+                mock_event.camera_id = None
+                mock_event.context = {}
+                mock_event.subjects = []
+                mock_cls.from_miloco_webhook.side_effect = ValueError("parse error")
+                mock_cls.return_value = mock_event
+
+                with patch("lumi.perception.router.PerceptionAnalyzer") as mock_analyzer_cls:
+                    mock_a = MagicMock()
+                    mock_a.analyze.return_value = PerceptionDecision(
+                        should_notify=False, reason="fallback"
+                    )
+                    mock_analyzer_cls.return_value = mock_a
+
+                    resp = c.post("/api/perception/webhook", json={"event_type": "unknown"})
+
+        assert resp.status_code == 200
+
+    def test_record_history_failure_does_not_break_response(self):
+        """_record_history 抛异常时，response 仍然正常返回。"""
+        with _client() as (c, _):
+            with patch("lumi.perception.router._record_history", side_effect=RuntimeError("disk full")):
+                with patch("lumi.perception.router.PerceptionAnalyzer") as mock_cls:
+                    mock_a = MagicMock()
+                    mock_a.analyze.return_value = PerceptionDecision(
+                        should_notify=False, reason="test"
+                    )
+                    mock_cls.return_value = mock_a
+                    resp = c.post("/api/perception/webhook", json={"event_type": "pet_detected"})
+
+        assert resp.status_code == 200
+
+    def test_test_endpoint_fallback_on_parse_error(self):
+        """test endpoint 解析失败时降级构造 PerceptionEvent。"""
+        with _client() as (c, _):
+            with patch("lumi.perception.router.PerceptionEvent") as mock_cls:
+                mock_event = MagicMock()
+                mock_event.event_type.value = "unknown"
+                mock_event.event_id = "test"
+                mock_event.room = None
+                mock_event.camera_id = None
+                mock_event.context = {}
+                mock_event.subjects = []
+                mock_cls.from_miloco_webhook.side_effect = ValueError("parse error")
+                mock_cls.return_value = mock_event
+
+                with patch("lumi.perception.router.PerceptionAnalyzer") as mock_analyzer_cls:
+                    mock_a = MagicMock()
+                    mock_a.analyze.return_value = PerceptionDecision(
+                        should_notify=False, reason="test"
+                    )
+                    mock_analyzer_cls.return_value = mock_a
+
+                    resp = c.post("/api/perception/webhook/test", json={"event_type": "unknown"})
+
+        assert resp.status_code == 200
+
+
+# ─── history / stats 端点 ─────────────────────────────────────────────────────
+
+class TestHistoryStatsEndpoints:
+    def test_history_returns_200(self):
+        with _client() as (c, _):
+            resp = c.get("/api/perception/history")
+        assert resp.status_code == 200
+        assert "events" in resp.json()
+
+    def test_stats_returns_200(self):
+        with _client() as (c, _):
+            resp = c.get("/api/perception/stats")
+        assert resp.status_code == 200
+        assert "total" in resp.json()
+
+    def test_history_with_filters(self):
+        with _client() as (c, _):
+            resp = c.get("/api/perception/history?limit=5&event_type=litter_box_full")
+        assert resp.status_code == 200
+        assert resp.json()["count"] <= 5
+
