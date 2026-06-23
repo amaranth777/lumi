@@ -107,6 +107,13 @@ async def _handle_ha_event(
 
     logger.debug("HA state_changed: %s %s → %s", entity_id, old_val, new_val)
 
+    # 让设备图缓存失效，下次查询时重新从 HA 拉取
+    try:
+        from lumi.deps import get_device_graph_service
+        get_device_graph_service().invalidate_cache()
+    except Exception as e:
+        logger.debug("缓存失效调用失败: %s", e)
+
     # 广播设备状态变更到所有 WS 客户端
     await ws_manager.broadcast({
         "type": "update",

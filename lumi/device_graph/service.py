@@ -83,6 +83,11 @@ class DeviceGraphService:
             return self.refresh()
         return self._cached_graph
 
+    def invalidate_cache(self) -> None:
+        """让缓存失效——下次 get_graph() 时会重新从 HA/Miloco 拉取。"""
+        self._cached_graph = None
+        logger.debug("设备图缓存已失效")
+
     def get_summary(self, force_refresh: bool = False) -> DeviceGraphSummary:
         graph = self.get_graph(force_refresh=force_refresh)
         by_type: dict[str, int] = {}
