@@ -7,4 +7,8 @@ build/
 .env
 *.db
 *.log
-.DS_Store
+# Coverage
+.coverage
+htmlcov/
+coverage.xml
+
