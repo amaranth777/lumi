@@ -29,12 +29,15 @@ class FakeHTTPResponse:
         pass
 
 
-def _make_client(tmp_path: Path, token: str = "test_token") -> HAClient:
+def _make_client(tmp_path: Path, token: str = "test_token",
+                 retries: int = 1, retry_delay: float = 0.0) -> HAClient:
     token_file = tmp_path / "ha_token"
     token_file.write_text(token, encoding="utf-8")
     return HAClient(
         base_url="http://192.168.5.184:8123",
         token_file=str(token_file),
+        retries=retries,
+        retry_delay=retry_delay,
     )
 
 
@@ -194,3 +197,77 @@ class TestCallService:
             client.call_service("climate", "set_temperature", {"entity_id": "climate.ac"})
 
         assert "/api/services/climate/set_temperature" in urls_called[0]
+
+
+# ─── Retry 逻辑 ───────────────────────────────────────────────────────────────
+
+class TestRetryLogic:
+    def test_get_states_retries_on_failure(self, tmp_path):
+        """get_states 失败后重试，最终返回空列表。"""
+        client = _make_client(tmp_path, retries=3, retry_delay=0.0)
+        call_count = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError("timeout")
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = client.get_states()
+
+        assert result == []
+        assert call_count == 3  # 重试了 3 次
+
+    def test_get_states_succeeds_on_second_attempt(self, tmp_path):
+        """第一次失败，第二次成功。"""
+        client = _make_client(tmp_path, retries=3, retry_delay=0.0)
+        attempt = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal attempt
+            attempt += 1
+            if attempt == 1:
+                raise ConnectionError("first fail")
+            return FakeHTTPResponse(
+                json.dumps([{"entity_id": "light.x", "state": "on"}]).encode()
+            )
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = client.get_states()
+
+        assert len(result) == 1
+        assert attempt == 2
+
+    def test_call_service_retries_on_failure(self, tmp_path):
+        """call_service 失败后重试，最终返回 False。"""
+        client = _make_client(tmp_path, retries=2, retry_delay=0.0)
+        call_count = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError("network error")
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = client.call_service("light", "turn_on", {"entity_id": "light.x"})
+
+        assert result is False
+        assert call_count == 2
+
+    def test_call_service_succeeds_on_retry(self, tmp_path):
+        """call_service 第一次失败，第二次成功返回 True。"""
+        client = _make_client(tmp_path, retries=3, retry_delay=0.0)
+        attempt = 0
+
+        def fake_urlopen(req, timeout=None):
+            nonlocal attempt
+            attempt += 1
+            if attempt == 1:
+                raise ConnectionError("blip")
+            return FakeHTTPResponse(b"[]", status=200)
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = client.call_service("light", "turn_on", {"entity_id": "light.x"})
+
+        assert result is True
+        assert attempt == 2

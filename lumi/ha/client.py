@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -36,10 +37,13 @@ def _restore_proxy(backup: dict[str, str]) -> None:
 class HAClient:
     """Home Assistant REST API 客户端。"""
 
-    def __init__(self, base_url: str, token_file: str) -> None:
+    def __init__(self, base_url: str, token_file: str,
+                 retries: int = 3, retry_delay: float = 2.0) -> None:
         self.base_url = base_url.rstrip("/")
         self._token: str | None = None
         self._token_file = Path(token_file).expanduser()
+        self._retries = retries
+        self._retry_delay = retry_delay
 
     @property
     def token(self) -> str:
@@ -50,7 +54,7 @@ class HAClient:
         return self._token
 
     def _request(self, path: str) -> Any:
-        """发起 HA API 请求，绕过代理。"""
+        """发起 HA API 请求，绕过代理，带指数退避重试。"""
         url = f"{self.base_url}{path}"
         req = urllib.request.Request(
             url,
@@ -59,12 +63,23 @@ class HAClient:
                 "Content-Type": "application/json",
             },
         )
-        backup = _clear_proxy()
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return json.loads(resp.read())
-        finally:
-            _restore_proxy(backup)
+        last_exc: Exception | None = None
+        for attempt in range(self._retries):
+            backup = _clear_proxy()
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return json.loads(resp.read())
+            except Exception as e:
+                last_exc = e
+                _restore_proxy(backup)
+                if attempt < self._retries - 1:
+                    delay = self._retry_delay * (2 ** attempt)
+                    logger.warning("HA 请求失败 (attempt %d/%d): %s，%.1fs 后重试",
+                                   attempt + 1, self._retries, e, delay)
+                    time.sleep(delay)
+            else:
+                _restore_proxy(backup)
+        raise last_exc  # type: ignore[misc]
 
     def get_states(self) -> list[dict[str, Any]]:
         """拉取所有 entity 状态。"""
@@ -73,7 +88,7 @@ class HAClient:
             logger.debug("HA states: %d entities", len(result))
             return result
         except Exception as e:
-            logger.warning("HA get_states 失败: %s", e)
+            logger.warning("HA get_states 失败（已重试）: %s", e)
             return []
 
     def get_state(self, entity_id: str) -> dict[str, Any] | None:
@@ -85,7 +100,7 @@ class HAClient:
             return None
 
     def call_service(self, domain: str, service: str, data: dict[str, Any]) -> bool:
-        """调用 HA service（用于 Phase 3 控制）。"""
+        """调用 HA service。"""
         url = f"{self.base_url}/api/services/{domain}/{service}"
         body = json.dumps(data).encode()
         req = urllib.request.Request(
@@ -97,12 +112,22 @@ class HAClient:
             },
             method="POST",
         )
-        backup = _clear_proxy()
-        try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                return resp.status in (200, 201)
-        except Exception as e:
-            logger.error("HA call_service %s.%s 失败: %s", domain, service, e)
-            return False
-        finally:
-            _restore_proxy(backup)
+        last_exc: Exception | None = None
+        for attempt in range(self._retries):
+            backup = _clear_proxy()
+            try:
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    return resp.status in (200, 201)
+            except Exception as e:
+                last_exc = e
+                _restore_proxy(backup)
+                if attempt < self._retries - 1:
+                    delay = self._retry_delay * (2 ** attempt)
+                    logger.warning("HA call_service %s.%s 失败 (attempt %d/%d)，%.1fs 后重试",
+                                   domain, service, attempt + 1, self._retries, delay)
+                    time.sleep(delay)
+            else:
+                _restore_proxy(backup)
+        logger.error("HA call_service %s.%s 最终失败: %s", domain, service, last_exc)
+        return False
+
