@@ -243,7 +243,7 @@
                 roomCard.innerHTML = `
                     <h2>${room}</h2>
                     ${roomDevices.map(d => `
-                        <div class="device">
+                        <div class="device" data-device-id="${d.id}">
                             <div class="device-name">${d.name}</div>
                             <div class="device-state state-${d.state || 'unknown'}">${d.state || 'unknown'}</div>
                             <div class="device-controls">
