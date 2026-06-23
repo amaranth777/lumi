@@ -87,6 +87,7 @@ class PerceptionEvent(BaseModel):
             subjects=subjects,
             related_device_ids=payload.get("related_device_ids", []),
             raw=payload,
+            context=_extract_context(event_type, payload),
         )
 
     def has_subject_type(self, subject_type: str) -> bool:
@@ -98,3 +99,31 @@ class PerceptionEvent(BaseModel):
         if not self.subjects:
             return None
         return max(self.subjects, key=lambda s: s.confidence)
+
+
+def _extract_context(
+    event_type: PerceptionEventType, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """从 webhook payload 提取事件特定的上下文数据。"""
+    ctx: dict[str, Any] = {}
+
+    # 体重相关事件
+    if event_type in (PerceptionEventType.PET_WEIGHED,
+                      PerceptionEventType.LITTER_BOX_WEIGHT_LOW):
+        for key in ("weight_kg", "weight", "litter_weight_kg", "litter_weight"):
+            if key in payload:
+                ctx["weight_kg"] = float(payload[key])
+                break
+        # 也从 data 子字典里找
+        data = payload.get("data", {})
+        if "weight_kg" not in ctx and isinstance(data, dict):
+            for key in ("weight_kg", "weight", "litter_weight_kg"):
+                if key in data:
+                    ctx["weight_kg"] = float(data[key])
+                    break
+
+    # 通用：把 payload 里的 context 字段合并进来
+    if isinstance(payload.get("context"), dict):
+        ctx.update(payload["context"])
+
+    return ctx
