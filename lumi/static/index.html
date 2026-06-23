@@ -151,6 +151,14 @@
                 <h3>Miloco</h3>
                 <div class="value" id="miloco-status">-</div>
             </div>
+            <div class="stat-card">
+                <h3>Bridge</h3>
+                <div class="value" id="bridge-status">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>WS 连接</h3>
+                <div class="value" id="ws-connections">-</div>
+            </div>
         </div>
 
         <div class="rooms" id="rooms-container"></div>
@@ -171,6 +179,18 @@
                     data.miloco === 'ok' ? '✓' : data.miloco || '?';
             } catch (e) {
                 document.getElementById('ha-status').textContent = '离线';
+            }
+
+            try {
+                const res2 = await fetch(`${API_BASE}/api/status`);
+                const data2 = await res2.json();
+                const cooldowns = data2.bridge?.active_cooldowns ?? '-';
+                document.getElementById('bridge-status').textContent =
+                    cooldowns === 0 ? '✓ 空闲' : `${cooldowns} 冷却中`;
+                document.getElementById('ws-connections').textContent =
+                    data2.websocket?.connections ?? '-';
+            } catch (e) {
+                document.getElementById('bridge-status').textContent = '?';
             }
         }
 
