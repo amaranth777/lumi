@@ -5,9 +5,11 @@ from __future__ import annotations
 from lumi.config import get_config
 from lumi.device_graph.service import DeviceGraphService
 from lumi.ha.client import HAClient
+from lumi.scenes.store import SceneStore
 
 _ha_client: HAClient | None = None
 _device_graph_service: DeviceGraphService | None = None
+_scene_store: SceneStore | None = None
 
 
 def get_ha_client() -> HAClient | None:
@@ -34,3 +36,11 @@ def get_device_graph_service() -> DeviceGraphService:
             aliases=config.device_aliases,
         )
     return _device_graph_service
+
+
+def get_scene_store() -> SceneStore:
+    """获取场景存储（单例）。"""
+    global _scene_store
+    if _scene_store is None:
+        _scene_store = SceneStore()
+    return _scene_store

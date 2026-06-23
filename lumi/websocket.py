@@ -58,7 +58,7 @@ async def websocket_device_graph(websocket: WebSocket) -> None:
     """WebSocket 端点：实时推送设备图变化。
     
     消息格式：
-    - type: "snapshot" | "update" | "error"
+    - type: "snapshot" (完整快照) | "update" (增量更新) | "error"
     - data: 设备图数据或增量更新
     """
     await manager.connect(websocket)
@@ -72,22 +72,33 @@ async def websocket_device_graph(websocket: WebSocket) -> None:
             "data": graph.model_dump(),
         })
         
-        # 轮询检测变化（简单实现，Phase 3 可改为 HA WebSocket 订阅）
-        last_refresh = graph.metadata.get("last_refresh")
+        # 缓存上次的设备状态（id → state）
+        last_states = {d.id: d.state for d in graph.devices}
+        
         while True:
             await asyncio.sleep(5)  # 每 5 秒检查一次
             
             # 刷新设备图
             new_graph = service.get_graph(force_refresh=True)
-            new_refresh = new_graph.metadata.get("last_refresh")
+            new_states = {d.id: d.state for d in new_graph.devices}
             
-            # 如果有变化，推送
-            if new_refresh != last_refresh:
+            # 计算变化
+            changed = {}
+            for device_id, new_state in new_states.items():
+                old_state = last_states.get(device_id)
+                if old_state != new_state:
+                    changed[device_id] = new_state
+            
+            # 推送增量更新
+            if changed:
                 await websocket.send_json({
-                    "type": "snapshot",
-                    "data": new_graph.model_dump(),
+                    "type": "update",
+                    "data": {
+                        "changed_devices": changed,
+                        "timestamp": new_graph.metadata.get("last_refresh"),
+                    }
                 })
-                last_refresh = new_refresh
+                last_states = new_states
     
     except WebSocketDisconnect:
         manager.disconnect(websocket)

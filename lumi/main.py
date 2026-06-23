@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from lumi.device_graph.router import router as device_graph_router
+from lumi.scenes.router import router as scenes_router
 from lumi.websocket import router as ws_router
 
 logging.basicConfig(
@@ -40,6 +41,7 @@ if static_dir.exists():
 
 # API 路由
 app.include_router(device_graph_router)
+app.include_router(scenes_router)
 app.include_router(ws_router)
 
 
