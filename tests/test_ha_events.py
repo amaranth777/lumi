@@ -158,7 +158,13 @@ class TestHandleHaEvent:
         from unittest.mock import MagicMock, patch
         from lumi.device_graph.service import DeviceGraphService
 
+    @pytest.mark.asyncio
+    async def test_state_changed_invalidates_cache(self):
+        """state_changed 事件触发缓存更新（增量或全量）。"""
+        from lumi.device_graph.service import DeviceGraphService
+
         svc = MagicMock(spec=DeviceGraphService)
+        svc.update_device_state.return_value = True  # 增量更新成功
 
         mgr = MockWSManager()
         msg = _make_state_changed_msg("light.living_room", "on", "off")
@@ -166,7 +172,10 @@ class TestHandleHaEvent:
         with patch("lumi.deps.get_device_graph_service", return_value=svc):
             await _handle_ha_event(msg, mgr)
 
-        svc.invalidate_cache.assert_called_once()
+        # 增量更新被调用
+        svc.update_device_state.assert_called_once_with("light.living_room", "on")
+        # 增量成功时不需要全量失效
+        svc.invalidate_cache.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cache_invalidation_failure_does_not_block_broadcast(self):
@@ -278,3 +287,38 @@ class TestStartHaEventListener:
                 sys.modules.pop("websockets", None)
 
         assert len(sleep_calls) >= 2
+
+    @pytest.mark.asyncio
+    async def test_incremental_cache_update_on_state_changed(self):
+        """state_changed 事件优先走增量更新，不做全量失效。"""
+        from lumi.device_graph.service import DeviceGraphService
+        import time
+
+        svc = MagicMock(spec=DeviceGraphService)
+        svc.update_device_state.return_value = True  # 增量更新成功
+
+        mgr = MockWSManager()
+        msg = _make_state_changed_msg("light.living_room", "on", "off")
+
+        with patch("lumi.deps.get_device_graph_service", return_value=svc):
+            await _handle_ha_event(msg, mgr)
+
+        svc.update_device_state.assert_called_once_with("light.living_room", "on")
+        svc.invalidate_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_invalidate_when_device_not_in_cache(self):
+        """增量更新找不到设备时，降级为全量 invalidate_cache。"""
+        from lumi.device_graph.service import DeviceGraphService
+
+        svc = MagicMock(spec=DeviceGraphService)
+        svc.update_device_state.return_value = False  # 设备不在缓存
+
+        mgr = MockWSManager()
+        msg = _make_state_changed_msg("light.new_device", "on", "off")
+
+        with patch("lumi.deps.get_device_graph_service", return_value=svc):
+            await _handle_ha_event(msg, mgr)
+
+        svc.update_device_state.assert_called_once()
+        svc.invalidate_cache.assert_called_once()

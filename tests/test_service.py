@@ -135,6 +135,31 @@ class TestGetGraph:
         svc.invalidate_cache()
         assert svc._cache_time == 0.0
 
+    def test_update_device_state_updates_cache(self):
+        """update_device_state 直接更新缓存中设备的状态。"""
+        states = _make_ha_states(("light.a", "off"))
+        svc = _make_service(ha_states=states, cache_ttl=3600)
+        svc.get_graph()
+        result = svc.update_device_state("light.a", "on")
+        assert result is True
+        graph = svc.get_graph()
+        dev = next(d for d in graph.devices if d.id == "light.a")
+        assert dev.state == "on"
+
+    def test_update_device_state_returns_false_when_not_found(self):
+        """设备不在缓存时返回 False。"""
+        states = _make_ha_states(("light.a", "off"))
+        svc = _make_service(ha_states=states, cache_ttl=3600)
+        svc.get_graph()
+        result = svc.update_device_state("light.nonexistent", "on")
+        assert result is False
+
+    def test_update_device_state_returns_false_when_no_cache(self):
+        """缓存为空时返回 False。"""
+        svc = _make_service()
+        result = svc.update_device_state("light.a", "on")
+        assert result is False
+
     def test_rooms_built_from_aliases(self):
         states = _make_ha_states(("light.bedroom_lamp", "on"))
         aliases = [{"entity_id": "light.bedroom_lamp", "name": "卧室灯", "room": "卧室"}]

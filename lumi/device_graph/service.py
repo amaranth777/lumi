@@ -108,6 +108,22 @@ class DeviceGraphService:
         self._cache_time = 0.0
         logger.debug("设备图缓存已失效")
 
+    def update_device_state(self, entity_id: str, new_state: str) -> bool:
+        """增量更新缓存中单个设备的状态，避免全量重拉。
+
+        Returns:
+            True 表示缓存更新成功，False 表示设备不在缓存中（需全量刷新）。
+        """
+        if self._cached_graph is None:
+            return False
+        for i, device in enumerate(self._cached_graph.devices):
+            if device.id == entity_id:
+                updated = device.model_copy(update={"state": new_state})
+                self._cached_graph.devices[i] = updated
+                logger.debug("增量更新设备状态: %s → %s", entity_id, new_state)
+                return True
+        return False
+
     def get_summary(self, force_refresh: bool = False) -> DeviceGraphSummary:
         graph = self.get_graph(force_refresh=force_refresh)
         by_type: dict[str, int] = {}
