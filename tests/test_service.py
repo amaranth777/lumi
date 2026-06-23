@@ -41,6 +41,7 @@ def _make_service(
     ha_states: list[dict] | None = None,
     service_ok: bool = True,
     aliases: list[dict] | None = None,
+    cache_ttl: int = 300,
 ) -> DeviceGraphService:
     ha_client = MockHAClient(states=ha_states or [], service_ok=service_ok)
     return DeviceGraphService(
@@ -48,6 +49,7 @@ def _make_service(
         miloco_client=None,
         aliases=aliases or [],
         policy_engine=build_default_policy_engine(),
+        cache_ttl=cache_ttl,
     )
 
 
@@ -100,6 +102,38 @@ class TestGetGraph:
         # 下次 get_graph 应重新拉取（不崩溃，返回正常图）
         graph = svc.get_graph()
         assert len(graph.devices) == 1
+
+    def test_cache_ttl_expired_triggers_refresh(self):
+        """TTL 过期后 get_graph() 自动重新拉取。"""
+        states = _make_ha_states(("light.a", "on"))
+        svc = _make_service(ha_states=states, cache_ttl=0)  # TTL=0 立即过期
+        svc.get_graph()
+        # TTL=0，再次调用应重新拉取（不崩溃）
+        graph = svc.get_graph()
+        assert len(graph.devices) == 1
+
+    def test_cache_not_expired_within_ttl(self):
+        """TTL 内缓存不过期。"""
+        states = _make_ha_states(("light.a", "on"))
+        svc = _make_service(ha_states=states, cache_ttl=3600)
+        svc.get_graph()
+        assert not svc._is_cache_expired()
+
+    def test_cache_expired_when_ttl_zero(self):
+        """TTL=0 时缓存立即过期。"""
+        states = _make_ha_states(("light.a", "on"))
+        svc = _make_service(ha_states=states, cache_ttl=0)
+        svc.get_graph()
+        assert svc._is_cache_expired()
+
+    def test_invalidate_resets_cache_time(self):
+        """invalidate_cache 重置缓存时间戳。"""
+        states = _make_ha_states(("light.a", "on"))
+        svc = _make_service(ha_states=states, cache_ttl=3600)
+        svc.get_graph()
+        assert svc._cache_time > 0
+        svc.invalidate_cache()
+        assert svc._cache_time == 0.0
 
     def test_rooms_built_from_aliases(self):
         states = _make_ha_states(("light.bedroom_lamp", "on"))
@@ -191,12 +225,14 @@ class TestExecuteCommand:
     def test_unknown_platform_rejected(self):
         """手动插入一个非 ha/miloco 平台的设备。"""
         svc = _make_service()
-        # 直接注入缓存
+        # 直接注入缓存（同时设置时间戳避免 TTL 过期）
+        import time
         device = Device(
             id="xyz.device", name="未知平台", type="switch",
             platform="unknown_platform", state="on", attributes={}
         )
         svc._cached_graph = DeviceGraph(devices=[device], rooms={})
+        svc._cache_time = time.monotonic()
         result = svc.execute_command("xyz.device", "turn_on", {})
         assert result.success is False
         assert "平台" in result.message

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +24,12 @@ if TYPE_CHECKING:
     from lumi.ha.client import HAClient
     from lumi.miloco.client import MilocoClient
 
+import time
+
 logger = logging.getLogger(__name__)
+
+# 缓存 TTL（秒）——即使没有 HA 事件触发失效，超过此时间也强制刷新
+_CACHE_TTL = int(os.getenv("LUMI_CACHE_TTL", "300"))  # 默认 5 分钟
 
 
 class DeviceGraphService:
@@ -32,12 +39,15 @@ class DeviceGraphService:
         miloco_client: MilocoClient | None = None,
         aliases: list[dict[str, Any]] | None = None,
         policy_engine: PolicyEngine | None = None,
+        cache_ttl: int = _CACHE_TTL,
     ) -> None:
         self.ha_client = ha_client
         self.miloco_client = miloco_client
         self.aliases = aliases or []
         self.policy_engine = policy_engine or get_default_policy_engine()
+        self.cache_ttl = cache_ttl
         self._cached_graph: DeviceGraph | None = None
+        self._cache_time: float = 0.0  # 最后一次刷新的时间戳
 
     def refresh(self) -> DeviceGraph:
         devices: list[Device] = []
@@ -76,16 +86,26 @@ class DeviceGraphService:
             metadata={"last_refresh": datetime.now().isoformat()},
         )
         self._cached_graph = graph
+        self._cache_time = time.monotonic()
         return graph
 
+    def _is_cache_expired(self) -> bool:
+        """检查缓存是否已超过 TTL。"""
+        if self._cached_graph is None:
+            return True
+        cache_time = getattr(self, "_cache_time", 0.0)
+        cache_ttl = getattr(self, "cache_ttl", _CACHE_TTL)
+        return (time.monotonic() - cache_time) >= cache_ttl
+
     def get_graph(self, force_refresh: bool = False) -> DeviceGraph:
-        if force_refresh or self._cached_graph is None:
+        if force_refresh or self._cached_graph is None or self._is_cache_expired():
             return self.refresh()
         return self._cached_graph
 
     def invalidate_cache(self) -> None:
         """让缓存失效——下次 get_graph() 时会重新从 HA/Miloco 拉取。"""
         self._cached_graph = None
+        self._cache_time = 0.0
         logger.debug("设备图缓存已失效")
 
     def get_summary(self, force_refresh: bool = False) -> DeviceGraphSummary:

@@ -28,6 +28,9 @@ def _make_service_with_devices(*devices: Device) -> DeviceGraphService:
     svc.aliases = []
     from lumi.device_graph.policy import build_default_policy_engine
     svc.policy_engine = build_default_policy_engine()
+    svc.cache_ttl = 3600  # 测试中不过期
+    import time
+    svc._cache_time = time.monotonic()
     rooms: dict[str, list[str]] = {}
     for d in devices:
         if d.room:

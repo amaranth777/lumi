@@ -53,6 +53,9 @@ def _make_device_svc(*devices: Device) -> DeviceGraphService:
     svc.aliases = []
     from lumi.device_graph.policy import build_default_policy_engine
     svc.policy_engine = build_default_policy_engine()
+    svc.cache_ttl = 3600  # 测试中不过期
+    import time
+    svc._cache_time = time.monotonic()
     svc._cached_graph = DeviceGraph(devices=list(devices), rooms={})
     return svc
 
