@@ -143,6 +143,14 @@
                 <h3>开启设备</h3>
                 <div class="value" id="active-devices">-</div>
             </div>
+            <div class="stat-card">
+                <h3>HA 状态</h3>
+                <div class="value" id="ha-status">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Miloco</h3>
+                <div class="value" id="miloco-status">-</div>
+            </div>
         </div>
 
         <div class="rooms" id="rooms-container"></div>
@@ -153,9 +161,22 @@
         const WS_URL = `ws://${window.location.host}/ws/device_graph`;
         let ws;
 
+        async function fetchHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const data = await res.json();
+                document.getElementById('ha-status').textContent =
+                    data.ha === 'ok' ? `✓ (${data.device_count}台)` : data.ha || '?';
+                document.getElementById('miloco-status').textContent =
+                    data.miloco === 'ok' ? '✓' : data.miloco || '?';
+            } catch (e) {
+                document.getElementById('ha-status').textContent = '离线';
+            }
+        }
+
         function connectWebSocket() {
             ws = new WebSocket(WS_URL);
-            
+
             ws.onopen = () => {
                 document.getElementById('ws-status').textContent = '已连接';
             };
@@ -229,6 +250,8 @@
         }
 
         connectWebSocket();
+        fetchHealth();
+        setInterval(fetchHealth, 30000);  // 每 30 秒刷新一次
     </script>
 </body>
 </html>
