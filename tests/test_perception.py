@@ -225,3 +225,62 @@ class TestAnalyzerGeneral:
         event = PerceptionEvent.from_miloco_webhook({"event_type": "motion_detected"})
         d = self.analyzer.analyze(event)
         assert d.should_notify is False
+
+
+# ─── 新事件类型：猫砂余量 + 称重 ─────────────────────────────────────────────
+
+class TestAnalyzerNewEventTypes:
+    def setup_method(self) -> None:
+        self.analyzer = PerceptionAnalyzer()
+
+    def test_litter_box_weight_low_with_weight(self) -> None:
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})
+        event.context["weight_kg"] = 1.5
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "猫砂" in (d.message or "")
+        assert "1.50" in (d.message or "")
+
+    def test_litter_box_weight_low_no_weight(self) -> None:
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "猫砂" in (d.message or "")
+
+    def test_pet_weighed_normal(self) -> None:
+        """正常体重不通知。"""
+        event = PerceptionEvent.from_miloco_webhook({
+            "event_type": "pet_weighed",
+            "subjects": [{"type": "cat", "name": "麻薯", "confidence": 0.99}],
+        })
+        event.context["weight_kg"] = 3.64
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is False
+        assert "3.64" in d.reason
+
+    def test_pet_weighed_abnormal_low(self) -> None:
+        """体重过低通知。"""
+        event = PerceptionEvent.from_miloco_webhook({
+            "event_type": "pet_weighed",
+            "subjects": [{"type": "cat", "name": "麻薯", "confidence": 0.99}],
+        })
+        event.context["weight_kg"] = 1.2
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "1.20" in (d.message or "")
+        assert "异常" in (d.message or "")
+
+    def test_pet_weighed_abnormal_high(self) -> None:
+        """体重过高通知。"""
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "pet_weighed"})
+        event.context["weight_kg"] = 9.5
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "9.50" in (d.message or "")
+
+    def test_pet_weighed_no_data(self) -> None:
+        """无称重数据，静默。"""
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "pet_weighed"})
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is False
+        assert "缺失" in d.reason

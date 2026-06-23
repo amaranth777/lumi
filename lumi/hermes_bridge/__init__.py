@@ -71,13 +71,15 @@ class CooldownTracker:
 
 # 每种事件类型的冷却时间（秒）
 EVENT_COOLDOWNS: dict[PerceptionEventType, int] = {
-    PerceptionEventType.LITTER_BOX_FULL: 1800,     # 30 分钟
-    PerceptionEventType.PET_AT_LITTER_BOX: 600,    # 10 分钟
+    PerceptionEventType.LITTER_BOX_FULL: 1800,        # 30 分钟
+    PerceptionEventType.PET_AT_LITTER_BOX: 600,       # 10 分钟
     PerceptionEventType.PET_LEFT_LITTER_BOX: 600,
     PerceptionEventType.PET_DETECTED: 300,
-    PerceptionEventType.PERSON_DETECTED: 120,       # 2 分钟（安全优先）
-    PerceptionEventType.ANOMALY_DETECTED: 60,       # 1 分钟（告警优先）
-    PerceptionEventType.LITTER_BOX_CLEANED: 3600,   # 1 小时
+    PerceptionEventType.PERSON_DETECTED: 120,          # 2 分钟（安全优先）
+    PerceptionEventType.ANOMALY_DETECTED: 60,          # 1 分钟（告警优先）
+    PerceptionEventType.LITTER_BOX_CLEANED: 3600,      # 1 小时
+    PerceptionEventType.LITTER_BOX_WEIGHT_LOW: 14400,  # 4 小时（补砂提醒）
+    PerceptionEventType.PET_WEIGHED: 3600,             # 1 小时（体重异常才推送）
     PerceptionEventType.MOTION_DETECTED: 600,
     PerceptionEventType.UNKNOWN: 300,
 }

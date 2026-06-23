@@ -18,8 +18,10 @@ class PerceptionEventType(str, Enum):
     PET_LEFT_LITTER_BOX = "pet_left_litter_box"  # 宠物离开猫砂盆
 
     # 设备状态
-    LITTER_BOX_FULL = "litter_box_full"    # 集便仓满
+    LITTER_BOX_FULL = "litter_box_full"        # 集便仓满
     LITTER_BOX_CLEANED = "litter_box_cleaned"  # 猫砂盆完成清洁
+    LITTER_BOX_WEIGHT_LOW = "litter_box_weight_low"  # 猫砂余量不足
+    PET_WEIGHED = "pet_weighed"                # 宠物称重完成（猫砂盆内置体重秤）
 
     # 通用
     MOTION_DETECTED = "motion_detected"    # 移动检测

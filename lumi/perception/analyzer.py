@@ -61,6 +61,12 @@ class PerceptionAnalyzer:
         if event.event_type == PerceptionEventType.ANOMALY_DETECTED:
             return self._analyze_anomaly_detected(event)
 
+        if event.event_type == PerceptionEventType.LITTER_BOX_WEIGHT_LOW:
+            return self._analyze_litter_box_weight_low(event)
+
+        if event.event_type == PerceptionEventType.PET_WEIGHED:
+            return self._analyze_pet_weighed(event)
+
         if event.event_type == PerceptionEventType.MOTION_DETECTED:
             # 普通移动检测，不通知
             return PerceptionDecision(
@@ -200,6 +206,39 @@ class PerceptionAnalyzer:
         return PerceptionDecision(
             should_notify=False,
             reason="猫砂盆清洁完成，正常状态",
+        )
+
+    def _analyze_litter_box_weight_low(self, event: PerceptionEvent) -> PerceptionDecision:
+        """猫砂余量不足——通知补砂。"""
+        weight = event.context.get("weight_kg")
+        weight_str = f"（当前 {weight:.2f}kg）" if weight is not None else ""
+        return PerceptionDecision(
+            should_notify=True,
+            message=f"🪣 猫砂余量不足{weight_str}，请及时补充猫砂。",
+            reason="猫砂余量低于阈值",
+        )
+
+    def _analyze_pet_weighed(self, event: PerceptionEvent) -> PerceptionDecision:
+        """宠物称重完成——记录体重，异常时通知。"""
+        subject = event.primary_subject()
+        name = (subject.name or "猫猫") if subject else "猫猫"
+        weight = event.context.get("weight_kg")
+
+        if weight is None:
+            return PerceptionDecision(should_notify=False, reason="称重数据缺失")
+
+        # 体重异常范围（示例：2kg 以下或 8kg 以上视为异常）
+        if weight < 2.0 or weight > 8.0:
+            return PerceptionDecision(
+                should_notify=True,
+                message=f"⚖️ {name} 体重 {weight:.2f}kg，数值异常，请关注。",
+                reason=f"体重异常: {weight:.2f}kg",
+            )
+
+        # 正常体重，静默记录
+        return PerceptionDecision(
+            should_notify=False,
+            reason=f"{name} 体重 {weight:.2f}kg，正常范围",
         )
 
     def _analyze_anomaly_detected(self, event: PerceptionEvent) -> PerceptionDecision:
