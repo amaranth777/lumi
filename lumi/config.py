@@ -50,12 +50,21 @@ class MilocoConfig(BaseModel):
     )
 
 
+class PetConfig(BaseModel):
+    """宠物相关配置。"""
+    name: str = Field(default="猫猫", description="宠物名称")
+    weight_min_kg: float = Field(default=2.0, description="体重异常下限（kg）")
+    weight_max_kg: float = Field(default=8.0, description="体重异常上限（kg）")
+    litter_low_kg: float = Field(default=1.0, description="猫砂余量告警阈值（kg）")
+
+
 class LumiConfig(BaseModel):
     """Lumi 全局配置。"""
 
     server: ServerConfig = Field(default_factory=ServerConfig)
     ha: HAConfig = Field(default_factory=HAConfig)
     miloco: MilocoConfig = Field(default_factory=MilocoConfig)
+    pet: PetConfig = Field(default_factory=PetConfig)
     device_aliases: list[dict[str, Any]] = Field(
         default_factory=list,
         description="设备手动映射配置",

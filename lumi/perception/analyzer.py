@@ -220,22 +220,23 @@ class PerceptionAnalyzer:
 
     def _analyze_pet_weighed(self, event: PerceptionEvent) -> PerceptionDecision:
         """宠物称重完成——记录体重，异常时通知。"""
+        from lumi.config import get_config
+        pet_cfg = get_config().pet
+
         subject = event.primary_subject()
-        name = (subject.name or "猫猫") if subject else "猫猫"
+        name = (subject.name or pet_cfg.name) if subject else pet_cfg.name
         weight = event.context.get("weight_kg")
 
         if weight is None:
             return PerceptionDecision(should_notify=False, reason="称重数据缺失")
 
-        # 体重异常范围（示例：2kg 以下或 8kg 以上视为异常）
-        if weight < 2.0 or weight > 8.0:
+        if weight < pet_cfg.weight_min_kg or weight > pet_cfg.weight_max_kg:
             return PerceptionDecision(
                 should_notify=True,
                 message=f"⚖️ {name} 体重 {weight:.2f}kg，数值异常，请关注。",
                 reason=f"体重异常: {weight:.2f}kg",
             )
 
-        # 正常体重，静默记录
         return PerceptionDecision(
             should_notify=False,
             reason=f"{name} 体重 {weight:.2f}kg，正常范围",
