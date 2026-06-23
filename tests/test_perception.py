@@ -184,3 +184,23 @@ class TestAnalyzerGeneral:
         event = PerceptionEvent.from_miloco_webhook({"event_type": "mystery_event"})
         d = self.analyzer.analyze(event)
         assert d.should_notify is False
+
+    def test_litter_box_cleaned_no_notify(self) -> None:
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_cleaned"})
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is False
+
+    def test_anomaly_detected_notify(self) -> None:
+        event = PerceptionEvent.from_miloco_webhook({
+            "event_type": "anomaly_detected",
+            "room": "客厅",
+            "subjects": [{"type": "fire", "confidence": 0.9}],
+        })
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "fire" in (d.message or "") or "异常" in (d.message or "")
+
+    def test_motion_detected_no_notify(self) -> None:
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "motion_detected"})
+        d = self.analyzer.analyze(event)
+        assert d.should_notify is False

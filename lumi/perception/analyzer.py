@@ -55,6 +55,19 @@ class PerceptionAnalyzer:
         if event.event_type == PerceptionEventType.PERSON_DETECTED:
             return self._analyze_person_detected(event)
 
+        if event.event_type == PerceptionEventType.LITTER_BOX_CLEANED:
+            return self._analyze_litter_box_cleaned(event)
+
+        if event.event_type == PerceptionEventType.ANOMALY_DETECTED:
+            return self._analyze_anomaly_detected(event)
+
+        if event.event_type == PerceptionEventType.MOTION_DETECTED:
+            # 普通移动检测，不通知
+            return PerceptionDecision(
+                should_notify=False,
+                reason="普通移动检测，无需通知",
+            )
+
         # 默认：不通知
         return PerceptionDecision(
             should_notify=False,
@@ -180,6 +193,24 @@ class PerceptionAnalyzer:
             should_notify=True,
             message=f"👤 {room}检测到陌生人，请注意。",
             reason="未识别人物",
+        )
+
+    def _analyze_litter_box_cleaned(self, event: PerceptionEvent) -> PerceptionDecision:
+        """猫砂盆完成清洁——静默确认，不通知。"""
+        return PerceptionDecision(
+            should_notify=False,
+            reason="猫砂盆清洁完成，正常状态",
+        )
+
+    def _analyze_anomaly_detected(self, event: PerceptionEvent) -> PerceptionDecision:
+        """检测到异常——通知。"""
+        room = event.room or "未知区域"
+        subject = event.primary_subject()
+        desc = subject.type if subject else "异常情况"
+        return PerceptionDecision(
+            should_notify=True,
+            message=f"⚠️ {room}检测到{desc}，请注意！",
+            reason=f"异常事件: {desc}",
         )
 
     # ─── HA 状态查询辅助 ─────────────────────────────────────────────────────
