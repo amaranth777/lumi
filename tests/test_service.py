@@ -315,3 +315,119 @@ class TestBatchExecuteCommand:
         result = svc.batch_execute_command([], "turn_off", {})
         assert result.total == 0
         assert result.success == 0
+
+
+# ─── _execute_miloco_command ─────────────────────────────────────────────────
+
+class MockMilocoClient:
+    def __init__(self, set_ok: bool = True, action_ok: bool = True):
+        self.set_ok = set_ok
+        self.action_ok = action_ok
+        self.set_calls: list[tuple] = []
+        self.action_calls: list[tuple] = []
+        self._status: dict = {}
+
+    def set_property(self, did, siid, piid, value) -> bool:
+        self.set_calls.append((did, siid, piid, value))
+        return self.set_ok
+
+    def call_action(self, did, siid, aiid, params=None) -> bool:
+        self.action_calls.append((did, siid, aiid, params))
+        return self.action_ok
+
+    def get_device_status(self, did) -> dict:
+        return self._status
+
+
+def _make_miloco_device(did: str = "device123", command: str = "turn_on") -> Device:
+    import time
+    return Device(
+        id=f"miloco.{did}", name="米家设备", type="switch",
+        platform="miloco", state="off",
+        attributes={"did": did}, capabilities=["toggle"],
+    )
+
+
+def _make_miloco_service(miloco_ok: bool = True) -> tuple:
+    """返回 (svc, miloco_client, device)"""
+    import time
+    miloco = MockMilocoClient(set_ok=miloco_ok, action_ok=miloco_ok)
+    svc = DeviceGraphService(
+        ha_client=None,
+        miloco_client=miloco,
+        aliases=[],
+        policy_engine=build_default_policy_engine(),
+        cache_ttl=3600,
+    )
+    device = _make_miloco_device()
+    svc._cached_graph = DeviceGraph(devices=[device], rooms={})
+    svc._cache_time = time.monotonic()
+    return svc, miloco, device
+
+
+class TestExecuteMilocoCommand:
+    def test_turn_on_calls_set_property(self):
+        svc, miloco, dev = _make_miloco_service()
+        result = svc.execute_command(dev.id, "turn_on", {})
+        assert result.success is True
+        assert miloco.set_calls[0] == ("device123", 2, 1, True)
+
+    def test_turn_off_calls_set_property_false(self):
+        svc, miloco, dev = _make_miloco_service()
+        result = svc.execute_command(dev.id, "turn_off", {})
+        assert result.success is True
+        assert miloco.set_calls[0] == ("device123", 2, 1, False)
+
+    def test_toggle_queries_status_then_flips(self):
+        svc, miloco, dev = _make_miloco_service()
+        miloco._status = {"properties": [{"iid": "prop.2.1", "value": False}]}
+        result = svc.execute_command(dev.id, "toggle", {})
+        assert result.success is True
+        # 当前 False → 应设置为 True
+        assert miloco.set_calls[0] == ("device123", 2, 1, True)
+
+    def test_set_property_direct(self):
+        svc, miloco, dev = _make_miloco_service()
+        result = svc.execute_command(dev.id, "set_property", {"siid": 3, "piid": 2, "value": 80})
+        assert result.success is True
+        assert miloco.set_calls[0] == ("device123", 3, 2, 80)
+
+    def test_call_action(self):
+        svc, miloco, dev = _make_miloco_service()
+        result = svc.execute_command(dev.id, "call_action", {"siid": 2, "aiid": 1, "params": []})
+        assert result.success is True
+        assert miloco.action_calls[0] == ("device123", 2, 1, [])
+
+    def test_unsupported_miloco_command(self):
+        svc, miloco, dev = _make_miloco_service()
+        result = svc.execute_command(dev.id, "fly_to_moon", {})
+        assert result.success is False
+        assert "Miloco" in result.message
+
+    def test_miloco_set_failure(self):
+        svc, miloco, dev = _make_miloco_service(miloco_ok=False)
+        result = svc.execute_command(dev.id, "turn_on", {})
+        assert result.success is False
+
+    def test_miloco_missing_did(self):
+        import time
+        svc, miloco, _ = _make_miloco_service()
+        bad_dev = Device(
+            id="miloco.nodid", name="无DID设备", type="switch",
+            platform="miloco", state="off", attributes={},
+        )
+        svc._cached_graph = DeviceGraph(devices=[bad_dev], rooms={})
+        svc._cache_time = time.monotonic()
+        result = svc.execute_command("miloco.nodid", "turn_on", {})
+        assert result.success is False
+        assert "did" in result.message
+
+    def test_miloco_client_not_initialized(self):
+        import time
+        svc = DeviceGraphService(ha_client=None, miloco_client=None,
+                                  cache_ttl=3600)
+        dev = _make_miloco_device()
+        svc._cached_graph = DeviceGraph(devices=[dev], rooms={})
+        svc._cache_time = time.monotonic()
+        result = svc.execute_command(dev.id, "turn_on", {})
+        assert result.success is False
