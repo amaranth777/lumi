@@ -169,6 +169,13 @@ async def status() -> dict:
     except Exception:
         result["websocket"] = {"connections": 0}
 
+    # 感知事件摘要
+    try:
+        from lumi.perception.history import get_history
+        result["perception"] = get_history().get_stats()
+    except Exception as e:
+        result["perception"] = {"error": str(e)}
+
     return result
 
 
