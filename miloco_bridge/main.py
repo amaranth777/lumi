@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 
 from lumi.perception.events import PerceptionEvent
 from lumi.perception.analyzer import PerceptionAnalyzer
+from lumi.hermes_bridge import get_bridge
 
 # 懒加载 WS manager，避免循环导入
 def _get_ws_manager():
@@ -154,13 +155,13 @@ async def _run_hermes_async(run_id: str, prompt: str) -> None:
 
 
 async def _run_perception_async(run_id: str, payload: dict) -> None:
-    """感知闭环：解析事件 → PerceptionAnalyzer 分析 → 按需直接推微信。
+    """感知闭环：解析事件 → PerceptionAnalyzer 分析 → HermesBridge 直推微信。
 
-    直接走 Hermes send_message API，不经过 LLM 推理，减少延迟。
+    直接走 HermesBridge（HTTP send_message API），不经过 LLM 推理，减少延迟。
+    内置冷却限流，防止同类事件轰炸。
     """
     try:
         event = PerceptionEvent.from_miloco_webhook(payload)
-        # 注入 HA client 让分析器能做交叉验证
         analyzer = PerceptionAnalyzer(ha_client=_get_ha_client())
         decision = analyzer.analyze(event)
 
@@ -182,12 +183,21 @@ async def _run_perception_async(run_id: str, payload: dict) -> None:
                     },
                 ))
 
-            # 直接推微信：让 Hermes agent 转发消息
-            prompt = (
-                f"请直接用 send_message 工具把以下内容推送到微信（target='weixin'），"
-                f"不要修改内容，不要额外处理：\n\n{decision.message}"
-            )
-            await _run_hermes_async(run_id, prompt)
+            # 直接推微信：HermesBridge 调 gateway send_message API，带冷却限流
+            bridge = get_bridge()
+            result = bridge.notify(event, decision)
+            if result.skipped:
+                logger.info("run_id=%s 推送限流: %s", run_id, result.skip_reason)
+            elif result.success:
+                logger.info("run_id=%s 推送成功: %s", run_id, decision.message[:50])
+            else:
+                logger.error("run_id=%s 推送失败: %s", run_id, result.error)
+                # 降级：走 LLM 推理兜底
+                prompt = (
+                    f"请直接用 send_message 工具把以下内容推送到微信（target='weixin'），"
+                    f"不要修改内容：\n\n{decision.message}"
+                )
+                await _run_hermes_async(run_id, prompt)
 
     except Exception as e:
         logger.error("run_id=%s perception analysis failed: %s", run_id, e)
