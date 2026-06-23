@@ -72,7 +72,24 @@ for svc in lumi miloco-hermes-bridge; do
   fi
 done
 
-# ── 单元测试 ─────────────────────────────────────────────────
+# ── 策略守卫自检 ──────────────────────────────────────────────
+echo ""
+echo "▶ 策略守卫"
+POLICY_CODE=$(NO_PROXY='*' curl -s -o /dev/null -w "%{http_code}" \
+  --max-time 3 -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"command":"empty","params":{}}' \
+  "http://127.0.0.1:8810/api/device_graph/button.petjc_cn_821633016_pro_clean_a_2_1/command" \
+  2>/dev/null || echo "000")
+if [[ "$POLICY_CODE" == "403" ]]; then
+  ok "猫砂盆 Empty 拦截正常 → 403"
+elif [[ "$POLICY_CODE" == "000" ]]; then
+  warn "Lumi API 未运行，跳过策略守卫检查"
+else
+  fail "猫砂盆 Empty 未被拦截，预期 403，实际 $POLICY_CODE"
+fi
+
+
 echo ""
 echo "▶ 单元测试"
 if [[ -f "$VENV_PYTHON" ]]; then
