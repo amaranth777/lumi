@@ -168,6 +168,47 @@ class TestGetGraph:
         assert "卧室" in graph.rooms
         assert "light.bedroom_lamp" in graph.rooms["卧室"]
 
+    def test_miloco_devices_added_when_not_in_ha(self):
+        """Miloco 独立设备（不与 HA 重叠）被添加到设备图。"""
+        import time
+        ha_states = _make_ha_states(("light.a", "on"))
+        miloco_dev = {
+            "did": "miloco123", "name": "米家灯", "category": "light",
+            "room_name": "客厅", "is_online": True,
+        }
+
+        class MockMilocoFusion:
+            def get_device_list(self):
+                return [miloco_dev]
+
+        from lumi.miloco.fusion import miloco_devices_to_lumi
+        from lumi.device_graph.schema import Device
+        lumi_dev = Device(
+            id="miloco.miloco123", name="米家灯", type="light",
+            platform="miloco", state="on", attributes={"did": "miloco123"},
+        )
+
+        svc = DeviceGraphService(
+            ha_client=MockHAClient(states=ha_states),
+            miloco_client=None,  # 用 refresh 直接测
+            aliases=[],
+            cache_ttl=3600,
+        )
+        # 手动注入包含两个来源的图
+        from lumi.device_graph.schema import DeviceGraph
+        ha_dev = Device(id="light.a", name="light.a", type="light",
+                        platform="ha", state="on", attributes={})
+        svc._cached_graph = DeviceGraph(
+            devices=[ha_dev, lumi_dev], rooms={}
+        )
+        svc._cache_time = time.monotonic()
+
+        graph = svc.get_graph()
+        ids = [d.id for d in graph.devices]
+        assert "light.a" in ids
+        assert "miloco.miloco123" in ids
+        assert len(graph.devices) == 2
+
 
 # ─── get_summary ─────────────────────────────────────────────────────────────
 
