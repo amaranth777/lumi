@@ -83,7 +83,7 @@ class TestWebhookNotify:
 
 class TestWebhookPerception:
     def test_perception_action_returns_ok(self, client):
-        with patch("miloco_bridge.main._run_perception_async", new_callable=AsyncMock):
+        with patch("miloco_bridge.main._forward_perception_async", new_callable=AsyncMock):
             resp = client.post("/miloco/webhook", json={
                 "action": "perception",
                 "payload": {"event_type": "litter_box_full", "room": "卫生间"},
@@ -92,7 +92,7 @@ class TestWebhookPerception:
         assert resp.json()["code"] == 0
 
     def test_perception_unknown_event_still_ok(self, client):
-        with patch("miloco_bridge.main._run_perception_async", new_callable=AsyncMock):
+        with patch("miloco_bridge.main._forward_perception_async", new_callable=AsyncMock):
             resp = client.post("/miloco/webhook", json={
                 "action": "perception",
                 "payload": {"event_type": "mystery_event"},

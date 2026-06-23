@@ -5,6 +5,12 @@ fire-and-forget 触发 Hermes agent run，立即返回给 Miloco，Hermes 处理
 
 Miloco 期望的响应格式：
     { "code": 0, "message": "ok", "data": { "runId": "...", "status": "ok" } }
+
+架构说明：
+- action=agent    → 转发给 Hermes LLM，由 Hermes send_message 推微信
+- action=notify   → 转发给 Hermes LLM 直推微信
+- action=perception → 转发到 Lumi /api/perception/webhook，Lumi 侧完成分析+推送
+  bridge 保持轻薄，不重复实现感知分析逻辑
 """
 from __future__ import annotations
 
@@ -18,38 +24,18 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from lumi.perception.events import PerceptionEvent
-from lumi.perception.analyzer import PerceptionAnalyzer
-from lumi.hermes_bridge import get_bridge
-
-# 懒加载 WS manager，避免循环导入
-def _get_ws_manager():
-    try:
-        from lumi.websocket import manager
-        return manager
-    except Exception:
-        return None
-
-
-def _get_ha_client():
-    """懒加载 HA client——bridge 不持久化连接，按需创建。"""
-    try:
-        from lumi.ha.client import HAClient
-        import os
-        token_file = os.path.expanduser("~/.hermes/ha_token")
-        return HAClient(base_url="http://192.168.5.184:8123", token_file=token_file)
-    except Exception:
-        return None
-
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-app = FastAPI(title="Miloco-Hermes Bridge", version="0.2.0")
+app = FastAPI(title="Miloco-Hermes Bridge", version="0.3.0")
 
 # Hermes OpenAI-compatible API server
 HERMES_API_URL = os.getenv("HERMES_API_URL", "http://127.0.0.1:8642")
 HERMES_API_KEY = os.getenv("HERMES_API_KEY", "any")
 HERMES_MODEL = os.getenv("HERMES_MODEL", "hermes-agent")
+
+# Lumi API — 感知闭环在 Lumi 侧处理
+LUMI_API_URL = os.getenv("LUMI_API_URL", "http://127.0.0.1:8810")
 
 
 def _ok(data: dict[str, Any]) -> JSONResponse:
@@ -63,18 +49,25 @@ def _err(msg: str, code: int = 500) -> JSONResponse:
 @app.get("/health")
 async def health() -> dict:
     hermes_ok = False
+    lumi_ok = False
     try:
         async with httpx.AsyncClient(timeout=3) as client:
             r = await client.get(f"{HERMES_API_URL}/health")
             hermes_ok = r.status_code == 200
     except Exception:
         pass
-    return {"status": "ok", "hermes": hermes_ok}
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            r = await client.get(f"{LUMI_API_URL}/health")
+            lumi_ok = r.status_code == 200
+    except Exception:
+        pass
+    return {"status": "ok", "hermes": hermes_ok, "lumi": lumi_ok}
 
 
 @app.post("/miloco/webhook")
 async def miloco_webhook(request: Request) -> JSONResponse:
-    """接收 Miloco 后端请求，fire-and-forget 触发 Hermes，立即返回。"""
+    """接收 Miloco 后端请求，fire-and-forget 触发处理，立即返回。"""
     try:
         body = await request.json()
     except Exception:
@@ -90,21 +83,22 @@ async def miloco_webhook(request: Request) -> JSONResponse:
         message = payload.get("message", "")
         if not message:
             return _err("Empty message", 400)
-
         prompt = _build_prompt(message, payload)
-        # fire-and-forget：不等 Hermes 完成，立即回包给 Miloco
         asyncio.create_task(_run_hermes_async(run_id, prompt))
         return _ok({"runId": run_id, "status": "ok"})
 
     elif action == "notify":
-        # 直接推微信（通过 Hermes agent）
         message = payload.get("message", str(payload))
-        asyncio.create_task(_run_hermes_async(run_id, f"[Miloco通知] {message}\\n请直接用 send_message 推送到微信，不需要额外处理。"))
+        asyncio.create_task(_run_hermes_async(
+            run_id,
+            f"[Miloco通知] {message}\n请直接用 send_message 推送到微信，不需要额外处理。",
+        ))
         return _ok({"runId": run_id, "status": "ok"})
 
     elif action == "perception":
-        # 感知闭环：解析事件 → 分析 → 按需推微信
-        asyncio.create_task(_run_perception_async(run_id, payload))
+        # 感知闭环：转发到 Lumi /api/perception/webhook
+        # Lumi 侧负责 PerceptionAnalyzer + HermesBridge + WebSocket 广播
+        asyncio.create_task(_forward_perception_async(run_id, payload))
         return _ok({"runId": run_id, "status": "ok"})
 
     else:
@@ -119,20 +113,17 @@ def _build_prompt(message: str, payload: dict) -> str:
         "",
         message,
     ]
-
     perception = payload.get("perception")
     if perception:
         lines.append(f"\n[感知上下文]\n{perception}")
-
     device_summary = payload.get("deviceSummary")
     if device_summary:
         lines.append(f"\n[设备状态]\n{device_summary}")
-
     return "\n".join(lines)
 
 
 async def _run_hermes_async(run_id: str, prompt: str) -> None:
-    """异步调用 Hermes，结果通过 Hermes 自身的 send_message 工具推微信。"""
+    """异步调用 Hermes LLM，由 Hermes 自身的 send_message 推微信。"""
     try:
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
@@ -154,53 +145,35 @@ async def _run_hermes_async(run_id: str, prompt: str) -> None:
         logger.error("run_id=%s Hermes call failed: %s", run_id, e)
 
 
-async def _run_perception_async(run_id: str, payload: dict) -> None:
-    """感知闭环：解析事件 → PerceptionAnalyzer 分析 → HermesBridge 直推微信。
+async def _forward_perception_async(run_id: str, payload: dict) -> None:
+    """将 Miloco perception payload 转发到 Lumi /api/perception/webhook。
 
-    直接走 HermesBridge（HTTP send_message API），不经过 LLM 推理，减少延迟。
-    内置冷却限流，防止同类事件轰炸。
+    Lumi 侧完成：PerceptionAnalyzer 分析 + HermesBridge 推送 + WebSocket 广播。
+    bridge 只负责转发，不重复实现分析逻辑。
     """
     try:
-        event = PerceptionEvent.from_miloco_webhook(payload)
-        analyzer = PerceptionAnalyzer(ha_client=_get_ha_client())
-        decision = analyzer.analyze(event)
-
-        logger.info(
-            "run_id=%s perception event_type=%s should_notify=%s reason=%s",
-            run_id, event.event_type, decision.should_notify, decision.reason,
-        )
-
-        if decision.should_notify and decision.message:
-            # 广播到 WebSocket 前端
-            ws_manager = _get_ws_manager()
-            if ws_manager:
-                asyncio.create_task(ws_manager.broadcast_perception(
-                    event_type=event.event_type.value,
-                    payload={
-                        "message": decision.message,
-                        "room": event.room,
-                        "reason": decision.reason,
-                    },
-                ))
-
-            # 直接推微信：HermesBridge 调 gateway send_message API，带冷却限流
-            bridge = get_bridge()
-            result = bridge.notify(event, decision)
-            if result.skipped:
-                logger.info("run_id=%s 推送限流: %s", run_id, result.skip_reason)
-            elif result.success:
-                logger.info("run_id=%s 推送成功: %s", run_id, decision.message[:50])
-            else:
-                logger.error("run_id=%s 推送失败: %s", run_id, result.error)
-                # 降级：走 LLM 推理兜底
-                prompt = (
-                    f"请直接用 send_message 工具把以下内容推送到微信（target='weixin'），"
-                    f"不要修改内容：\n\n{decision.message}"
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                f"{LUMI_API_URL}/api/perception/webhook",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info(
+                    "run_id=%s perception forwarded: event_type=%s notified=%s skipped=%s",
+                    run_id,
+                    data.get("event_type"),
+                    data.get("notified"),
+                    data.get("skipped"),
                 )
-                await _run_hermes_async(run_id, prompt)
-
+            else:
+                logger.warning(
+                    "run_id=%s Lumi webhook returned %d: %s",
+                    run_id, resp.status_code, resp.text[:200],
+                )
     except Exception as e:
-        logger.error("run_id=%s perception analysis failed: %s", run_id, e)
+        logger.error("run_id=%s perception forward failed: %s", run_id, e)
 
 
 if __name__ == "__main__":
