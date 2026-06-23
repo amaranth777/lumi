@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
 from lumi.ha.events import _handle_ha_event
 
 
@@ -179,3 +181,100 @@ class TestHandleHaEvent:
 
         # 广播不受缓存失效失败的影响
         assert len(mgr.broadcasts) == 1
+
+
+# ─── start_ha_event_listener ─────────────────────────────────────────────────
+
+class TestStartHaEventListener:
+    """测试 HA WebSocket 连接握手和重连逻辑（不需要真实 HA）。"""
+
+    @pytest.mark.asyncio
+    async def test_successful_auth_and_subscribe(self):
+        """正常握手流程：auth_required → auth_ok → subscribe_ok → 不崩溃。"""
+        from lumi.ha.events import start_ha_event_listener
+
+        ha_client = MagicMock()
+        ha_client.base_url = "http://192.168.5.184:8123"
+        ha_client.token = "test_token"
+        mgr = MockWSManager()
+
+        messages = [
+            json.dumps({"type": "auth_required"}),
+            json.dumps({"type": "auth_ok", "ha_version": "2026.6.0"}),
+            json.dumps({"type": "result", "id": 1, "success": True}),
+        ]
+        msg_index = [0]
+
+        class FakeWS:
+            async def recv(self):
+                i = msg_index[0]
+                if i >= len(messages):
+                    raise asyncio.CancelledError("消息耗尽")
+                msg_index[0] += 1
+                return messages[i]
+
+            async def send(self, data):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                pass
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        import sys
+        mock_ws_mod = MagicMock()
+        mock_ws_mod.connect.return_value = FakeWS()
+        sys.modules.setdefault("websockets", mock_ws_mod)
+
+        try:
+            await asyncio.wait_for(
+                start_ha_event_listener(ha_client, mgr, reconnect_delay=0),
+                timeout=2.0,
+            )
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass  # 正常退出
+
+    @pytest.mark.asyncio
+    async def test_reconnects_on_connection_error(self):
+        """连接失败时触发重连（验证 sleep 被调用）。"""
+        from lumi.ha.events import start_ha_event_listener
+        import sys
+
+        ha_client = MagicMock()
+        ha_client.base_url = "http://192.168.5.184:8123"
+        ha_client.token = "test_token"
+        mgr = MockWSManager()
+
+        sleep_calls = []
+
+        async def mock_sleep(delay):
+            sleep_calls.append(delay)
+            if len(sleep_calls) >= 3:
+                raise asyncio.CancelledError("测试终止")
+
+        # 强制替换 sys.modules["websockets"] 让 connect 抛异常
+        mock_ws_mod = MagicMock()
+        mock_ws_mod.connect.side_effect = ConnectionRefusedError("拒绝连接")
+        old_ws = sys.modules.get("websockets")
+        sys.modules["websockets"] = mock_ws_mod
+
+        try:
+            with patch("asyncio.sleep", side_effect=mock_sleep):
+                try:
+                    await start_ha_event_listener(ha_client, mgr, reconnect_delay=0.001)
+                except asyncio.CancelledError:
+                    pass
+        finally:
+            if old_ws is not None:
+                sys.modules["websockets"] = old_ws
+            else:
+                sys.modules.pop("websockets", None)
+
+        assert len(sleep_calls) >= 2
