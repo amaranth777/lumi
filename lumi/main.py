@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from lumi.device_graph.router import router as device_graph_router
+from lumi.perception.router import router as perception_router
 from lumi.scenes.router import router as scenes_router
 from lumi.websocket import router as ws_router, manager as ws_manager
 
@@ -78,6 +79,7 @@ if static_dir.exists():
 
 # API 路由
 app.include_router(device_graph_router)
+app.include_router(perception_router)
 app.include_router(scenes_router)
 app.include_router(ws_router)
 
