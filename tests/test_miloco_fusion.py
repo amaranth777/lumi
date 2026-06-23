@@ -74,10 +74,19 @@ class TestMilocoDevicesToLumi:
         assert attrs["home_name"] == "我家"
         assert attrs["online"] is True
 
-    def test_room_is_none(self):
-        """Miloco 融合层不设 room，以 HA 为准。"""
-        devs = miloco_devices_to_lumi([_make_miloco_device()])
+    def test_room_inferred_from_name(self):
+        """设备名包含房间关键词时应推断出房间。"""
+        devs = miloco_devices_to_lumi([_make_miloco_device(name="卧室灯")])
+        assert devs[0].room == "卧室"
+
+    def test_room_none_when_no_keyword(self):
+        """设备名无房间关键词时 room 为 None。"""
+        devs = miloco_devices_to_lumi([_make_miloco_device(name="神秘设备")])
         assert devs[0].room is None
+
+    def test_room_living_room(self):
+        devs = miloco_devices_to_lumi([_make_miloco_device(name="客厅空调")])
+        assert devs[0].room == "客厅"
 
     def test_metadata_source(self):
         devs = miloco_devices_to_lumi([_make_miloco_device()])

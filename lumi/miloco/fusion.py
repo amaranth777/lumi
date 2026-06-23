@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from lumi.device_graph.fusion import infer_room
 from lumi.device_graph.schema import Device
 
 
@@ -63,8 +64,8 @@ def miloco_devices_to_lumi(
 
         name: str = raw.get("name", did)
         category: str = raw.get("category", "")
-        # 房间分类以 HA 为准，Miloco 的 room_name 不采用
-        room_name: str | None = None
+        # 优先从设备名推断房间（与 HA fusion 保持一致）
+        room_name: str | None = infer_room(did, name)
         online: bool = raw.get("online", False)
         model: str = raw.get("model", "")
 

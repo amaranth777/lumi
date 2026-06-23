@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from lumi.device_graph.fusion import ha_states_to_devices, _infer_room
+from lumi.device_graph.fusion import ha_states_to_devices, infer_room as _infer_room
 
 
 # ─── _infer_room ─────────────────────────────────────────────────────────────

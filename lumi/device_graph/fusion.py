@@ -67,7 +67,7 @@ _ROOM_KEYWORDS: list[tuple[str, str]] = [
 ]
 
 
-def _infer_room(entity_id: str, friendly_name: str) -> str | None:
+def infer_room(entity_id: str, friendly_name: str) -> str | None:
     text = f"{entity_id} {friendly_name}".lower()
     for pattern, room in _ROOM_KEYWORDS:
         if re.search(pattern, text):
@@ -112,7 +112,7 @@ def ha_states_to_devices(
         # 应用别名覆盖
         alias = alias_map.get(entity_id, {})
         name = alias.get("name", friendly_name)
-        room = alias.get("room") or _infer_room(entity_id, friendly_name)
+        room = alias.get("room") or infer_room(entity_id, friendly_name)
         icon = alias.get("icon") or attrs.get("icon")
 
         devices.append(Device(
