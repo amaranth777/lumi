@@ -57,6 +57,7 @@ def get_device_graph_service() -> DeviceGraphService:
             ha_client=ha_client,
             miloco_client=miloco_client,
             aliases=config.device_aliases,
+            cache_ttl=config.cache_ttl,
         )
     return _device_graph_service
 

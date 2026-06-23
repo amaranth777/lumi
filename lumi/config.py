@@ -60,6 +60,10 @@ class LumiConfig(BaseModel):
         default_factory=list,
         description="设备手动映射配置",
     )
+    cache_ttl: int = Field(
+        default=300,
+        description="设备图缓存 TTL（秒），默认 5 分钟",
+    )
 
 
 def _load_config_file() -> dict[str, Any]:
@@ -99,5 +103,10 @@ def get_config() -> LumiConfig:
             file_data.setdefault("miloco", {})["base_url"] = os.environ["LUMI_MILOCO_BASE_URL"]
         if "LUMI_MILOCO_TOKEN" in os.environ:
             file_data.setdefault("miloco", {})["token"] = os.environ["LUMI_MILOCO_TOKEN"]
+        if "LUMI_CACHE_TTL" in os.environ:
+            try:
+                file_data["cache_ttl"] = int(os.environ["LUMI_CACHE_TTL"])
+            except ValueError:
+                pass
         _config = LumiConfig(**file_data)
     return _config
