@@ -140,6 +140,27 @@ class TestAnalyzerWithHA:
         d = analyzer.analyze(event)
         assert d.should_notify is False
 
+    def test_pet_left_litter_box_bin_full(self) -> None:
+        """宠物离开 + 集便仓满 → 通知。"""
+        ha = MockHAClient(states=[
+            {"entity_id": "binary_sensor.petjc_cn_trash_full", "state": "on", "attributes": {}}
+        ])
+        analyzer = PerceptionAnalyzer(ha_client=ha)
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "pet_left_litter_box"})
+        d = analyzer.analyze(event)
+        assert d.should_notify is True
+        assert "满" in (d.message or "")
+
+    def test_pet_left_litter_box_bin_ok(self) -> None:
+        """宠物离开 + 集便仓未满 → 不通知。"""
+        ha = MockHAClient(states=[
+            {"entity_id": "binary_sensor.petjc_cn_trash_full", "state": "off", "attributes": {}}
+        ])
+        analyzer = PerceptionAnalyzer(ha_client=ha)
+        event = PerceptionEvent.from_miloco_webhook({"event_type": "pet_left_litter_box"})
+        d = analyzer.analyze(event)
+        assert d.should_notify is False
+
 
 # ─── PerceptionAnalyzer — 通用感知 ──────────────────────────────────────────
 
