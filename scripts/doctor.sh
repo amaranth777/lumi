@@ -49,7 +49,7 @@ echo "▶ 配置文件"
 HA_TOKEN="$HOME/.hermes/ha_token"
 [[ -f "$HA_TOKEN" ]] && ok "HA token: $HA_TOKEN" || fail "HA token 不存在: $HA_TOKEN"
 
-LUMI_CONFIG="$HOME/.config/lumi/config.yaml"
+LUMI_CONFIG="$HOME/.lumi/config.json"
 [[ -f "$LUMI_CONFIG" ]] && ok "Lumi config: $LUMI_CONFIG" || warn "Lumi config 不存在（将使用默认值）: $LUMI_CONFIG"
 
 # ── 服务健康检查 ──────────────────────────────────────────────
@@ -76,8 +76,7 @@ echo ""
 echo "▶ 单元测试"
 if [[ -f "$VENV_PYTHON" ]]; then
   TEST_OUT=$("$VENV_PYTHON" -m pytest \
-    "$REPO_DIR/tests/test_policy.py" \
-    "$REPO_DIR/tests/test_perception.py" \
+    "$REPO_DIR/tests/" \
     -q --tb=no 2>&1)
   if echo "$TEST_OUT" | grep -q "passed"; then
     PASSED=$(echo "$TEST_OUT" | grep -oP '\d+ passed' | head -1)
