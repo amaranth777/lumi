@@ -2,26 +2,61 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from contextlib import asynccontextmanager
 
 from lumi.device_graph.router import router as device_graph_router
 from lumi.scenes.router import router as scenes_router
-from lumi.websocket import router as ws_router
+from lumi.websocket import router as ws_router, manager as ws_manager
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期——启动时订阅 HA 事件。"""
+    # 延迟导入避免循环
+    from lumi.deps import get_ha_client
+    from lumi.ha.events import start_ha_event_listener
+
+    ha_client = get_ha_client()
+    if ha_client:
+        task = asyncio.create_task(
+            start_ha_event_listener(ha_client, ws_manager),
+            name="ha_event_listener",
+        )
+        logger.info("HA 事件监听器已启动")
+    else:
+        task = None
+        logger.info("HA 未启用，跳过事件监听")
+
+    yield  # 应用运行期间
+
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        logger.info("HA 事件监听器已停止")
+
+
 app = FastAPI(
     title="Lumi",
     description="统一智能家居设备图与控制层",
-    version="0.0.0.2",
+    version="0.0.0.3",
+    lifespan=lifespan,
 )
 
 # CORS 配置（前端开发/跨域）
