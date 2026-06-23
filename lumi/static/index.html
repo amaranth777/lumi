@@ -205,7 +205,10 @@
                     const changed = msg.data.changed_devices || {};
                     for (const [id, state] of Object.entries(changed)) {
                         const el = document.querySelector(`[data-device-id="${id}"] .device-state`);
-                        if (el) el.textContent = state;
+                        if (el) {
+                            el.textContent = state;
+                            el.className = `device-state state-${state || 'unknown'}`;
+                        }
                     }
                 } else if (msg.type === 'perception') {
                     // 感知事件：顶部 toast 通知
