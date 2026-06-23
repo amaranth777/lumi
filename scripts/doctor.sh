@@ -56,6 +56,7 @@ LUMI_CONFIG="$HOME/.lumi/config.json"
 echo ""
 echo "▶ 服务健康检查"
 check_http "http://127.0.0.1:8810/health" "Lumi API"
+check_http "http://127.0.0.1:8810/api/status" "Lumi Status"
 check_http "http://127.0.0.1:18789/health" "Miloco-Hermes Bridge"
 check_http "http://192.168.5.184:8123/api/" "Home Assistant" "401"
 
@@ -66,7 +67,7 @@ for svc in lumi miloco-hermes-bridge; do
   if systemctl --user is-active "$svc" >/dev/null 2>&1; then
     ok "$svc: active"
   else
-    status=$(systemctl --user is-active "$svc" 2>/dev/null || echo "unknown")
+    status=$(systemctl --user is-active "$svc" 2>/dev/null | tr -d '\n' || echo "unknown")
     warn "$svc: $status"
   fi
 done
