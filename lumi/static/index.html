@@ -174,6 +174,21 @@
             }
         }
 
+        function showPerceptionAlert(eventType, data) {
+            const msg = data.message || eventType;
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position:fixed; bottom:20px; right:20px; z-index:9999;
+                background:#fff; border-left:4px solid #764ba2;
+                padding:12px 16px; border-radius:8px; max-width:300px;
+                box-shadow:0 4px 12px rgba(0,0,0,0.15); font-size:14px;
+                animation: slideIn 0.3s ease;
+            `;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
         function connectWebSocket() {
             ws = new WebSocket(WS_URL);
 
@@ -185,6 +200,16 @@
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'snapshot') {
                     renderDevices(msg.data);
+                } else if (msg.type === 'update') {
+                    // 增量更新：刷新变化的设备状态
+                    const changed = msg.data.changed_devices || {};
+                    for (const [id, state] of Object.entries(changed)) {
+                        const el = document.querySelector(`[data-device-id="${id}"] .device-state`);
+                        if (el) el.textContent = state;
+                    }
+                } else if (msg.type === 'perception') {
+                    // 感知事件：顶部 toast 通知
+                    showPerceptionAlert(msg.event_type, msg.data);
                 }
             };
             
