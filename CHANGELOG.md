@@ -7,9 +7,12 @@ All notable changes to Lumi are documented here.
 ### Added
 - **缓存 TTL**（默认5分钟）— 防止 HA 事件丢失时缓存永久不刷新，可通过 `LUMI_CACHE_TTL` 环境变量配置
 - **`invalidate_cache()`** — HA `state_changed` 事件触发设备图缓存立即失效
+- **`update_device_state()`** — HA 事件增量更新单设备状态，避免全量重拉（降级时才失效整个缓存）
 - **`/api/status`** — 运行时详情端点（设备分布/场景数/bridge冷却状态/WS连接数）
 - **`lumi_device(action="status")`** — Hermes 工具新增 status action
 - **Miloco client 补全** — `get_home` / `get_device_status` / `set_properties` / `get_device_graph_summary`
+- **`lumi/device_graph/policy.py`** — `PolicyEngine` + `BlockedCommandRule` + `CallActionParamRule`（猫砂盆 Empty 拦截，aiid=3 拦截，`_force` override 支持）
+- **Dashboard 运行时卡片** — Bridge 冷却状态 + WS 连接数，来自 `/api/status`
 
 ### Changed
 - **WS 端点** — 去掉 5 秒轮询，改为纯事件驱动（HA WebSocket 推入）+ ping/pong keepalive
@@ -19,7 +22,7 @@ All notable changes to Lumi are documented here.
 - **README** — API 表格补全所有端点
 
 ### Tests
-- 350 cases（+32 vs 0.3.0）新增覆盖：invalidate_cache、HA 事件缓存失效、Miloco 控制通道、HA WS 握手/重连、main app 入口
+- 358 cases（+40 vs 0.3.0）新增覆盖：policy 规则链、invalidate_cache、增量 update_device_state、HA 事件缓存失效、Miloco 控制通道、HA WS 握手/重连、main app 入口、perception pet_left HA 分支、HA+Miloco 融合场景
 
 ---
 
