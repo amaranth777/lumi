@@ -71,5 +71,11 @@ def execute_command(
 ) -> CommandResponse:
     result = service.execute_command(device_id, body.command, body.params)
     if not result.success:
-        raise HTTPException(status_code=400, detail=result.message)
+        # 策略拦截 → 403，设备不存在 → 404，其他失败 → 400
+        msg = result.message
+        if "不存在" in msg or "not found" in msg.lower():
+            raise HTTPException(status_code=404, detail=msg)
+        if any(k in msg for k in ("策略拦截", "litter_box_no_", "PolicyViolation")):
+            raise HTTPException(status_code=403, detail=msg)
+        raise HTTPException(status_code=400, detail=msg)
     return result

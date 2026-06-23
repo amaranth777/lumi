@@ -159,15 +159,15 @@ class TestExecuteCommand:
         assert resp.status_code == 200
         assert resp.json()["success"] is True
 
-    def test_device_not_found_returns_400(self):
+    def test_device_not_found_returns_404(self):
         svc = _make_service_with_devices()
         app = _make_app_with_service(svc)
         with TestClient(app) as c:
             resp = c.post("/api/device_graph/light.ghost/command",
                          json={"command": "turn_on", "params": {}})
-        assert resp.status_code == 400
+        assert resp.status_code == 404
 
-    def test_policy_blocks_returns_400(self):
+    def test_policy_blocks_returns_403(self):
         svc = _make_service_with_devices(
             _make_device("button.petjc_cn_821633016_pro_clean")
         )
@@ -177,8 +177,16 @@ class TestExecuteCommand:
                 "/api/device_graph/button.petjc_cn_821633016_pro_clean/command",
                 json={"command": "empty", "params": {}}
             )
-        assert resp.status_code == 400
-        assert "策略" in resp.json()["detail"]
+        assert resp.status_code == 403
+        assert "策略" in resp.json()["detail"] or "litter_box" in resp.json()["detail"]
+
+    def test_device_not_found_returns_404(self):
+        svc = _make_service_with_devices()
+        app = _make_app_with_service(svc)
+        with TestClient(app) as c:
+            resp = c.post("/api/device_graph/light.ghost/command",
+                         json={"command": "turn_on", "params": {}})
+        assert resp.status_code == 404
 
     def test_missing_command_returns_422(self):
         svc = _make_service_with_devices(_make_device("light.x"))
