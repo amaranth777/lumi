@@ -57,6 +57,7 @@ echo ""
 echo "▶ 服务健康检查"
 check_http "http://127.0.0.1:8810/health" "Lumi API"
 check_http "http://127.0.0.1:8810/api/status" "Lumi Status"
+check_http "http://127.0.0.1:8810/api/perception/events/types" "Lumi Perception"
 check_http "http://127.0.0.1:18789/health" "Miloco-Hermes Bridge"
 check_http "http://192.168.5.184:8123/api/" "Home Assistant" "401"
 

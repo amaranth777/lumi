@@ -7,15 +7,17 @@ POST /api/perception/webhook  接收 Miloco 推送的感知事件，
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from lumi.perception.events import PerceptionEvent, PerceptionEventType
 from lumi.perception.analyzer import PerceptionAnalyzer, PerceptionDecision
 from lumi.hermes_bridge import get_bridge
+from lumi.perception.history import HistoryEntry, get_history
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,6 @@ class WebhookRequest(BaseModel):
     context: dict[str, Any] = {}
     data: dict[str, Any] = {}
 
-    # 允许额外字段透传到 raw
     model_config = {"extra": "allow"}
 
 
@@ -91,6 +92,26 @@ def _process_webhook(event: PerceptionEvent, notify: bool = True) -> WebhookResp
     )
 
 
+def _record_history(event: PerceptionEvent, resp: WebhookResponse) -> None:
+    """写入感知历史。"""
+    try:
+        get_history().record(HistoryEntry(
+            ts=datetime.now().isoformat(timespec="seconds"),
+            event_id=resp.event_id,
+            event_type=resp.event_type,
+            room=event.room,
+            camera_id=event.camera_id,
+            should_notify=resp.should_notify,
+            notified=resp.notified,
+            skipped=resp.skipped,
+            skip_reason=resp.skip_reason,
+            message=resp.message,
+            context=event.context,
+        ))
+    except Exception as e:
+        logger.debug("写感知历史失败（非致命）: %s", e)
+
+
 # ─── 路由 ─────────────────────────────────────────────────────────────────────
 
 @router.post("/webhook", response_model=WebhookResponse)
@@ -98,21 +119,14 @@ async def receive_webhook(
     payload: WebhookRequest,
     background_tasks: BackgroundTasks,
 ) -> WebhookResponse:
-    """接收 Miloco 感知 webhook。
-
-    支持两种工作模式：
-    - 同步模式（默认）：在请求内完成分析 + 推送，返回完整结果
-    - 异步模式：立即返回 202，推送在后台执行（payload 带 async=true 时）
-    """
-    # 转换为标准 PerceptionEvent
-    event_type = _parse_event_type(payload.event_type)
+    """接收 Miloco 感知 webhook，触发分析 + 推送 + 历史记录。"""
     raw_dict = payload.model_dump()
+    event_type = _parse_event_type(payload.event_type)
 
     try:
         event = PerceptionEvent.from_miloco_webhook(raw_dict)
     except Exception as e:
         logger.warning("webhook payload 解析失败，使用降级模式: %s", e)
-        from datetime import datetime
         event = PerceptionEvent(
             event_id=payload.event_id or "",
             event_type=event_type,
@@ -127,19 +141,17 @@ async def receive_webhook(
         event.event_type, event.event_id, event.room,
     )
 
-    # 广播到 WebSocket 客户端（非阻塞）
     background_tasks.add_task(_broadcast_perception, event)
 
-    # 同步分析 + 推送
-    return _process_webhook(event, notify=True)
+    result = _process_webhook(event, notify=True)
+    _record_history(event, result)
+    return result
 
 
 @router.get("/events/types")
 async def list_event_types() -> dict[str, list[str]]:
     """列出所有支持的感知事件类型。"""
-    return {
-        "event_types": [e.value for e in PerceptionEventType],
-    }
+    return {"event_types": [e.value for e in PerceptionEventType]}
 
 
 @router.post("/webhook/test", response_model=WebhookResponse)
@@ -149,7 +161,6 @@ async def test_webhook(payload: WebhookRequest) -> WebhookResponse:
     try:
         event = PerceptionEvent.from_miloco_webhook(raw_dict)
     except Exception:
-        from datetime import datetime
         event = PerceptionEvent(
             event_id=payload.event_id or "test",
             event_type=_parse_event_type(payload.event_type),
@@ -158,8 +169,35 @@ async def test_webhook(payload: WebhookRequest) -> WebhookResponse:
             room=payload.room,
             raw=raw_dict,
         )
-
     return _process_webhook(event, notify=False)
+
+
+@router.get("/history")
+async def get_perception_history(
+    limit: int = 20,
+    event_type: str | None = None,
+    room: str | None = None,
+) -> dict[str, Any]:
+    """查询最近的感知事件历史。
+
+    参数：
+    - limit: 返回条数（默认 20，最大 200）
+    - event_type: 按事件类型过滤（如 litter_box_full）
+    - room: 按房间过滤（如 卫生间）
+    """
+    limit = min(limit, 200)
+    history = get_history()
+    events = history.get_recent(limit=limit, event_type=event_type, room=room)
+    return {
+        "events": [e.to_dict() for e in events],
+        "count": len(events),
+    }
+
+
+@router.get("/stats")
+async def get_perception_stats() -> dict[str, Any]:
+    """感知事件统计摘要（内存中的最近 N 条）。"""
+    return get_history().get_stats()
 
 
 # ─── 后台任务 ─────────────────────────────────────────────────────────────────
