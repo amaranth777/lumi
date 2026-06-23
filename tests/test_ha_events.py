@@ -149,3 +149,33 @@ class TestHandleHaEvent:
             msg = _make_state_changed_msg(f"light.device_{i}", "on", "off")
             await _handle_ha_event(msg, mgr)
         assert len(mgr.broadcasts) == 3
+
+    @pytest.mark.asyncio
+    async def test_state_changed_invalidates_cache(self):
+        """state_changed 事件触发设备图缓存失效。"""
+        from unittest.mock import MagicMock, patch
+        from lumi.device_graph.service import DeviceGraphService
+
+        svc = MagicMock(spec=DeviceGraphService)
+
+        mgr = MockWSManager()
+        msg = _make_state_changed_msg("light.living_room", "on", "off")
+
+        with patch("lumi.deps.get_device_graph_service", return_value=svc):
+            await _handle_ha_event(msg, mgr)
+
+        svc.invalidate_cache.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidation_failure_does_not_block_broadcast(self):
+        """缓存失效失败时，广播仍然正常发送。"""
+        from unittest.mock import patch
+
+        mgr = MockWSManager()
+        msg = _make_state_changed_msg("light.test", "on", "off")
+
+        with patch("lumi.deps.get_device_graph_service", side_effect=RuntimeError("deps error")):
+            await _handle_ha_event(msg, mgr)
+
+        # 广播不受缓存失效失败的影响
+        assert len(mgr.broadcasts) == 1

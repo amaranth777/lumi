@@ -83,6 +83,24 @@ class TestGetGraph:
         svc.get_graph(force_refresh=True)
         # 两次都调用了 get_states，不崩溃即可
 
+    def test_invalidate_cache_clears_graph(self):
+        states = _make_ha_states(("light.a", "on"))
+        svc = _make_service(ha_states=states)
+        svc.get_graph()
+        assert svc._cached_graph is not None
+        svc.invalidate_cache()
+        assert svc._cached_graph is None
+
+    def test_invalidate_cache_forces_next_refresh(self):
+        states = _make_ha_states(("light.a", "on"))
+        ha = MockHAClient(states=states)
+        svc = DeviceGraphService(ha_client=ha)
+        svc.get_graph()
+        svc.invalidate_cache()
+        # 下次 get_graph 应重新拉取（不崩溃，返回正常图）
+        graph = svc.get_graph()
+        assert len(graph.devices) == 1
+
     def test_rooms_built_from_aliases(self):
         states = _make_ha_states(("light.bedroom_lamp", "on"))
         aliases = [{"entity_id": "light.bedroom_lamp", "name": "卧室灯", "room": "卧室"}]
