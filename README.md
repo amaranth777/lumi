@@ -94,11 +94,18 @@ lumi
 
 | 端点 | 说明 |
 |------|------|
-| `GET /health` | 健康检查 |
+| `GET /health` | 健康检查（版本/HA/Miloco 连通性/设备数） |
+| `GET /api/status` | 运行时详情（设备分布/场景数/bridge冷却/WS连接数） |
 | `GET /api/device_graph` | 完整设备图 |
 | `GET /api/device_graph/summary` | 设备图摘要（供 Hermes 分析） |
-| `POST /api/device_graph/{id}/command` | 统一设备控制 |
-| `WS /ws/device_graph` | 实时状态推送 |
+| `GET /api/device_graph/search?q=` | 按关键词搜索设备 |
+| `GET /api/device_graph/rooms/{room}` | 按房间查询设备 |
+| `POST /api/device_graph/{id}/command` | 统一设备控制（策略守卫保护） |
+| `POST /api/device_graph/batch/command` | 批量设备控制 |
+| `GET /api/scenes` | 列出所有预设场景 |
+| `POST /api/scenes` | 创建/更新场景 |
+| `POST /api/scenes/{id}/execute` | 执行场景 |
+| `WS /ws/device_graph` | 实时状态推送（HA事件驱动，<100ms 延迟） |
 | `GET /ui/` | 内置演示页面 |
 | `GET /docs` | 自动生成的 API 文档 |
 
