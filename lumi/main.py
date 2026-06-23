@@ -83,7 +83,7 @@ app.include_router(ws_router)
 @app.get("/health")
 async def health() -> dict:
     """健康检查端点——包含版本、HA 连通性、设备数。"""
-    from lumi.deps import get_ha_client, get_device_graph_service
+    from lumi.deps import get_ha_client, get_miloco_client
 
     result: dict = {
         "status": "ok",
@@ -103,12 +103,67 @@ async def health() -> dict:
         result["ha"] = "disabled"
 
     # Miloco 连通性
-    from lumi.deps import get_miloco_client
     miloco_client = get_miloco_client()
     if miloco_client:
         result["miloco"] = "ok" if miloco_client.is_available() else "error"
     else:
         result["miloco"] = "disabled"
+
+    return result
+
+
+@app.get("/api/status")
+async def status() -> dict:
+    """运行时详情端点——包含设备分布、场景数、bridge 冷却状态。"""
+    from lumi.deps import get_ha_client, get_miloco_client, get_device_graph_service, get_scene_store
+
+    result: dict = {
+        "status": "ok",
+        "version": app.version,
+    }
+
+    # 设备图摘要
+    try:
+        svc = get_device_graph_service()
+        summary = svc.get_summary()
+        result["devices"] = {
+            "total": summary.total,
+            "by_platform": summary.by_platform,
+            "by_type": summary.by_type,
+            "rooms": summary.rooms,
+        }
+    except Exception as e:
+        result["devices"] = {"error": str(e)}
+
+    # 场景数
+    try:
+        store = get_scene_store()
+        result["scenes"] = {"count": len(store.list())}
+    except Exception as e:
+        result["scenes"] = {"error": str(e)}
+
+    # HermesBridge 冷却状态
+    try:
+        from lumi.hermes_bridge import get_bridge
+        bridge = get_bridge()
+        cooldown_state = {
+            k: round(bridge.cooldown.remaining(k))
+            for k in bridge.cooldown._last_sent
+            if bridge.cooldown.remaining(k) > 0
+        }
+        result["bridge"] = {
+            "target": bridge.target,
+            "active_cooldowns": len(cooldown_state),
+            "cooldowns": cooldown_state,
+        }
+    except Exception as e:
+        result["bridge"] = {"error": str(e)}
+
+    # WebSocket 连接数
+    try:
+        result["websocket"] = {"connections": len(ws_manager.active_connections)}
+    except Exception:
+        result["websocket"] = {"connections": 0}
 
     return result
 
