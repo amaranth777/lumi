@@ -18,6 +18,9 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from lumi.perception.events import PerceptionEvent
+from lumi.perception.analyzer import PerceptionAnalyzer
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -76,7 +79,12 @@ async def miloco_webhook(request: Request) -> JSONResponse:
     elif action == "notify":
         # 直接推微信（通过 Hermes agent）
         message = payload.get("message", str(payload))
-        asyncio.create_task(_run_hermes_async(run_id, f"[Miloco通知] {message}\n请直接用 send_message 推送到微信，不需要额外处理。"))
+        asyncio.create_task(_run_hermes_async(run_id, f"[Miloco通知] {message}\\n请直接用 send_message 推送到微信，不需要额外处理。"))
+        return _ok({"runId": run_id, "status": "ok"})
+
+    elif action == "perception":
+        # 感知闭环：解析事件 → 分析 → 按需推微信
+        asyncio.create_task(_run_perception_async(run_id, payload))
         return _ok({"runId": run_id, "status": "ok"})
 
     else:
@@ -124,6 +132,34 @@ async def _run_hermes_async(run_id: str, prompt: str) -> None:
             logger.info("run_id=%s Hermes completed: %d chars", run_id, len(content))
     except Exception as e:
         logger.error("run_id=%s Hermes call failed: %s", run_id, e)
+
+
+async def _run_perception_async(run_id: str, payload: dict) -> None:
+    """感知闭环：解析事件 → PerceptionAnalyzer 分析 → 按需直接推微信。
+
+    直接走 Hermes send_message API，不经过 LLM 推理，减少延迟。
+    """
+    try:
+        event = PerceptionEvent.from_miloco_webhook(payload)
+        # 不传 ha_client（bridge 层无 HA 直连），分析器走纯感知判断
+        analyzer = PerceptionAnalyzer(ha_client=None)
+        decision = analyzer.analyze(event)
+
+        logger.info(
+            "run_id=%s perception event_type=%s should_notify=%s reason=%s",
+            run_id, event.event_type, decision.should_notify, decision.reason,
+        )
+
+        if decision.should_notify and decision.message:
+            # 直接推微信：让 Hermes agent 转发消息
+            prompt = (
+                f"请直接用 send_message 工具把以下内容推送到微信（target='weixin'），"
+                f"不要修改内容，不要额外处理：\n\n{decision.message}"
+            )
+            await _run_hermes_async(run_id, prompt)
+
+    except Exception as e:
+        logger.error("run_id=%s perception analysis failed: %s", run_id, e)
 
 
 if __name__ == "__main__":
