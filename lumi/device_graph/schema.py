@@ -63,3 +63,20 @@ class CommandResponse(BaseModel):
     message: str = Field(default="", description="结果消息")
     device_id: str = Field(..., description="设备ID")
     command: str = Field(..., description="执行的命令")
+
+
+class BatchCommandRequest(BaseModel):
+    """批量控制命令请求。"""
+
+    device_ids: list[str] = Field(..., description="设备ID列表")
+    command: str = Field(..., description="命令类型")
+    params: dict[str, Any] = Field(default_factory=dict, description="命令参数")
+
+
+class BatchCommandResponse(BaseModel):
+    """批量控制响应。"""
+
+    total: int = Field(..., description="总数")
+    success: int = Field(..., description="成功数")
+    failed: int = Field(..., description="失败数")
+    results: list[CommandResponse] = Field(default_factory=list, description="详细结果")

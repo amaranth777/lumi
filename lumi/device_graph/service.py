@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Any
 
 from lumi.device_graph.commands import resolve_command
 from lumi.device_graph.fusion import ha_states_to_devices
-from lumi.device_graph.schema import CommandResponse, Device, DeviceGraph, DeviceGraphSummary
+from lumi.device_graph.schema import (
+    BatchCommandResponse,
+    CommandResponse,
+    Device,
+    DeviceGraph,
+    DeviceGraphSummary,
+)
 
 if TYPE_CHECKING:
     from lumi.ha.client import HAClient
@@ -109,3 +115,37 @@ class DeviceGraphService:
             device_id=device_id,
             command=command,
         )
+
+    def batch_execute_command(
+        self, device_ids: list[str], command: str, params: dict[str, Any]
+    ) -> BatchCommandResponse:
+        """批量执行命令。"""
+        results = []
+        for device_id in device_ids:
+            result = self.execute_command(device_id, command, params)
+            results.append(result)
+        
+        success_count = sum(1 for r in results if r.success)
+        return BatchCommandResponse(
+            total=len(results),
+            success=success_count,
+            failed=len(results) - success_count,
+            results=results,
+        )
+
+    def get_devices_by_room(self, room: str) -> list[Device]:
+        """按房间查询设备。"""
+        graph = self.get_graph()
+        device_ids = graph.rooms.get(room, [])
+        return [d for d in graph.devices if d.id in device_ids]
+
+    def search_devices(self, query: str) -> list[Device]:
+        """搜索设备（name/id/room）。"""
+        graph = self.get_graph()
+        query_lower = query.lower()
+        return [
+            d for d in graph.devices
+            if query_lower in d.name.lower()
+            or query_lower in d.id.lower()
+            or (d.room and query_lower in d.room.lower())
+        ]
