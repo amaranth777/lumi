@@ -35,6 +35,19 @@ def get_device_graph_summary(
     return service.get_summary(force_refresh=refresh)
 
 
+@router.get("/types", response_model=dict)
+def get_device_types(
+    service: DeviceGraphService = Depends(get_device_graph_service),
+) -> dict:
+    """列出所有设备类型及数量。"""
+    summary = service.get_summary()
+    return {
+        "types": summary.by_type,
+        "total": summary.total_devices,
+        "rooms": summary.rooms,
+    }
+
+
 @router.get("/search", response_model=list[Device])
 def search_devices(
     q: str = Query(..., description="搜索关键词（名称/ID/房间）"),

@@ -98,7 +98,33 @@ class TestGetSummary:
         assert resp.json()["by_platform"]["ha"] == 1
 
 
-# ─── GET /api/device_graph/search ────────────────────────────────────────────
+# ─── GET /api/device_graph/types ─────────────────────────────────────────────
+
+class TestGetDeviceTypes:
+    def test_types_returns_by_type(self):
+        svc = _make_service_with_devices(
+            _make_device("light.a", "light"),
+            _make_device("light.b", "light"),
+            _make_device("switch.c", "switch"),
+        )
+        app = _make_app_with_service(svc)
+        with TestClient(app) as c:
+            resp = c.get("/api/device_graph/types")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["types"]["light"] == 2
+        assert data["types"]["switch"] == 1
+        assert data["total"] == 3
+
+    def test_types_includes_rooms(self):
+        svc = _make_service_with_devices(_make_device("light.x"))
+        app = _make_app_with_service(svc)
+        with TestClient(app) as c:
+            resp = c.get("/api/device_graph/types")
+        assert "rooms" in resp.json()
+
+
+
 
 class TestSearchDevices:
     def test_search_match(self):
