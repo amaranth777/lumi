@@ -28,7 +28,6 @@ packages = ["lumi"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-ignore = ["tests/integration_test.py"]
 
 [tool.ruff]
 line-length = 100
