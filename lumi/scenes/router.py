@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from lumi.device_graph.schema import BatchCommandResponse
@@ -10,6 +15,27 @@ from lumi.deps import get_device_graph_service, get_scene_store
 from lumi.scenes.store import Scene, SceneStore
 
 router = APIRouter(prefix="/api/scenes", tags=["scenes"])
+logger = logging.getLogger(__name__)
+
+_SCENE_LOG_PATH = os.path.expanduser("~/.hermes/logs/lumi_scenes.log")
+
+
+def _log_scene_execution(scene_id: str, scene_name: str, result: BatchCommandResponse) -> None:
+    """写场景执行审计日志。"""
+    try:
+        os.makedirs(os.path.dirname(_SCENE_LOG_PATH), exist_ok=True)
+        entry = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "scene_id": scene_id,
+            "scene_name": scene_name,
+            "total": result.total,
+            "success": result.success,
+            "failed": result.failed,
+        }
+        with open(_SCENE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning("写场景审计日志失败: %s", e)
 
 
 @router.get("", response_model=list[Scene])
@@ -62,9 +88,15 @@ def execute_scene(
         results.append(result)
 
     success_count = sum(1 for r in results if r.success)
-    return BatchCommandResponse(
+    response = BatchCommandResponse(
         total=len(results),
         success=success_count,
         failed=len(results) - success_count,
         results=results,
     )
+
+    # 审计日志
+    _log_scene_execution(scene_id, scene.name, response)
+    logger.info("场景执行: %s (%s) — %d/%d 成功", scene.name, scene_id, success_count, len(results))
+
+    return response
