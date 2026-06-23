@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lumi 设备控制面板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 300;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
+        .stat-card .value { font-size: 32px; font-weight: bold; color: #667eea; }
+        .rooms {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .room-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .room-card h2 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #764ba2;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        .device {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        .device:hover { background: #e9ecef; }
+        .device-name {
+            font-weight: 500;
+            flex: 1;
+        }
+        .device-state {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .state-on { background: #d4edda; color: #155724; }
+        .state-off { background: #f8d7da; color: #721c24; }
+        .state-unknown { background: #e2e3e5; color: #383d41; }
+        .device-controls {
+            display: flex;
+            gap: 5px;
+            margin-left: 10px;
+        }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-on { background: #28a745; color: white; }
+        .btn-off { background: #dc3545; color: white; }
+        .btn-toggle { background: #667eea; color: white; }
+        .status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="status">
+        <div class="status-dot"></div>
+        <span id="ws-status">连接中...</span>
+    </div>
+
+    <div class="container">
+        <h1>🏠 Lumi 智能家居控制面板</h1>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>设备总数</h3>
+                <div class="value" id="total-devices">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>房间数量</h3>
+                <div class="value" id="total-rooms">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>开启设备</h3>
+                <div class="value" id="active-devices">-</div>
+            </div>
+        </div>
+
+        <div class="rooms" id="rooms-container"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        const WS_URL = `ws://${window.location.host}/ws/device_graph`;
+        let ws;
+
+        function connectWebSocket() {
+            ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                document.getElementById('ws-status').textContent = '已连接';
+            };
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'snapshot') {
+                    renderDevices(msg.data);
+                }
+            };
+            
+            ws.onerror = () => {
+                document.getElementById('ws-status').textContent = '连接错误';
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('ws-status').textContent = '已断开';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function renderDevices(graph) {
+            const { devices, rooms } = graph;
+            
+            // 统计
+            document.getElementById('total-devices').textContent = devices.length;
+            document.getElementById('total-rooms').textContent = Object.keys(rooms).length;
+            document.getElementById('active-devices').textContent = 
+                devices.filter(d => d.state === 'on').length;
+            
+            // 按房间分组渲染
+            const container = document.getElementById('rooms-container');
+            container.innerHTML = '';
+            
+            for (const [room, deviceIds] of Object.entries(rooms)) {
+                const roomDevices = devices.filter(d => deviceIds.includes(d.id));
+                const roomCard = document.createElement('div');
+                roomCard.className = 'room-card';
+                roomCard.innerHTML = `
+                    <h2>${room}</h2>
+                    ${roomDevices.map(d => `
+                        <div class="device">
+                            <div class="device-name">${d.name}</div>
+                            <div class="device-state state-${d.state || 'unknown'}">${d.state || 'unknown'}</div>
+                            <div class="device-controls">
+                                <button class="btn btn-on" onclick="sendCommand('${d.id}', 'turn_on')">开</button>
+                                <button class="btn btn-off" onclick="sendCommand('${d.id}', 'turn_off')">关</button>
+                                <button class="btn btn-toggle" onclick="sendCommand('${d.id}', 'toggle')">切换</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                `;
+                container.appendChild(roomCard);
+            }
+        }
+
+        async function sendCommand(deviceId, command) {
+            try {
+                const res = await fetch(`${API_BASE}/api/device_graph/${deviceId}/command`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command, params: {} })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    alert(`控制失败: ${result.message}`);
+                }
+            } catch (err) {
+                alert(`请求失败: ${err.message}`);
+            }
+        }
+
+        connectWebSocket();
+    </script>
+</body>
+</html>
