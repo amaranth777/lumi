@@ -68,6 +68,9 @@ async def websocket_device_graph(websocket: WebSocket) -> None:
     消息格式：
     - type: "snapshot" (完整快照) | "update" (增量更新) | "perception" (感知事件) | "error"
     - data: 设备图数据或增量更新
+
+    增量更新由 HA WebSocket 事件订阅器主动推入（<100ms 延迟），
+    本端点只负责发初始快照并保持连接存活。
     """
     await manager.connect(websocket)
     service = get_device_graph_service()
@@ -80,33 +83,17 @@ async def websocket_device_graph(websocket: WebSocket) -> None:
             "data": graph.model_dump(),
         })
 
-        # 缓存上次的设备状态（id → state）
-        last_states = {d.id: d.state for d in graph.devices}
-
+        # 保持连接：等待客户端消息（ping/pong/close）
+        # 增量更新由 ha/events.py 的 _handle_ha_event → manager.broadcast 推入
         while True:
-            await asyncio.sleep(5)  # 每 5 秒检查一次
-
-            # 刷新设备图
-            new_graph = service.get_graph(force_refresh=True)
-            new_states = {d.id: d.state for d in new_graph.devices}
-
-            # 计算变化
-            changed = {}
-            for device_id, new_state in new_states.items():
-                old_state = last_states.get(device_id)
-                if old_state != new_state:
-                    changed[device_id] = new_state
-
-            # 推送增量更新
-            if changed:
-                await websocket.send_json({
-                    "type": "update",
-                    "data": {
-                        "changed_devices": changed,
-                        "timestamp": new_graph.metadata.get("last_refresh"),
-                    }
-                })
-                last_states = new_states
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                # 客户端发来 ping，回 pong
+                if msg == "ping":
+                    await websocket.send_text("pong")
+            except asyncio.TimeoutError:
+                # 30s 无消息，发心跳
+                await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
