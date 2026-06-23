@@ -1,23 +1,24 @@
-"""Lumi 策略守卫层。
+"""策略守卫层 — 高风险设备操作拦截。
 
-在命令执行前拦截高风险操作，防止误操作。
-所有策略以声明式规则描述，易于扩展。
+PolicyEngine 在 DeviceGraphService.execute_command() 里被调用，
+在真正执行命令前检查规则，返回 PolicyViolation 表示拦截，None 表示放行。
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from lumi.device_graph.schema import Device
 
-logger = logging.getLogger(__name__)
+
+# ─── 数据结构 ─────────────────────────────────────────────────────────────────
 
 
 @dataclass
 class PolicyViolation:
-    """策略拦截结果。"""
+    """命令被策略拦截时的返回值。"""
+
     blocked: bool
     reason: str
     rule_name: str
@@ -25,113 +26,121 @@ class PolicyViolation:
 
 @dataclass
 class PolicyRule:
-    """单条策略规则基类。"""
+    """策略规则基类。子类实现 check()。"""
+
     name: str
     description: str
 
-    def check(self, device: Device, command: str, params: dict[str, Any]) -> PolicyViolation | None:
-        """返回 PolicyViolation 表示拦截，返回 None 表示放行。"""
+    def check(
+        self, device: Device, command: str, params: dict[str, Any]
+    ) -> PolicyViolation | None:
         raise NotImplementedError
+
+
+# ─── 内置规则 ─────────────────────────────────────────────────────────────────
 
 
 @dataclass
 class BlockedCommandRule(PolicyRule):
-    """禁止特定设备执行特定命令（精确匹配）。"""
-    device_id_fragment: str        # 设备 ID 包含此字符串时触发
-    blocked_commands: list[str]    # 被拦截的命令列表
-    override_keyword: str = ""     # 用户必须在 params 里提供此关键字才能强制执行
+    """按 device_id 片段 + 命令名拦截，支持 _force override。"""
 
-    def check(self, device: Device, command: str, params: dict[str, Any]) -> PolicyViolation | None:
+    device_id_fragment: str = ""
+    blocked_commands: list[str] = field(default_factory=list)
+
+    def check(
+        self, device: Device, command: str, params: dict[str, Any]
+    ) -> PolicyViolation | None:
+        # 设备 ID 不包含目标片段 → 放行
         if self.device_id_fragment not in device.id:
             return None
-        if command not in self.blocked_commands:
+        # 命令不在拦截列表 → 放行
+        if command.lower() not in [c.lower() for c in self.blocked_commands]:
             return None
-        # 检查强制覆盖关键字
-        if self.override_keyword and params.get("_force") == self.override_keyword:
-            logger.warning(
-                "策略 [%s] 被强制覆盖，设备=%s 命令=%s",
-                self.name, device.id, command
-            )
+        # _force override → 放行
+        if params.get("_force") == "CONFIRM_EMPTY":
             return None
         return PolicyViolation(
             blocked=True,
-            reason=f"策略拒绝：{self.description}（设备: {device.name}, 命令: {command}）",
+            reason=f"[{self.name}] 命令 '{command}' 被策略拦截：{self.description}",
             rule_name=self.name,
         )
 
 
 @dataclass
-class DeviceTypeCommandRule(PolicyRule):
-    """禁止特定设备类型执行某些命令。"""
-    device_type: str
-    blocked_commands: list[str]
+class CallActionParamRule(PolicyRule):
+    """按 device_id 片段 + call_action 参数拦截特定 siid/aiid 组合。"""
 
-    def check(self, device: Device, command: str, params: dict[str, Any]) -> PolicyViolation | None:
-        if device.type != self.device_type:
+    device_id_fragment: str = ""
+    blocked_aiids: list[int] = field(default_factory=list)
+
+    def check(
+        self, device: Device, command: str, params: dict[str, Any]
+    ) -> PolicyViolation | None:
+        if command != "call_action":
             return None
-        if command not in self.blocked_commands:
+        if self.device_id_fragment not in device.id:
+            return None
+        aiid = params.get("aiid")
+        if aiid not in self.blocked_aiids:
+            return None
+        # _force override → 放行
+        if params.get("_force") == "CONFIRM_EMPTY":
             return None
         return PolicyViolation(
             blocked=True,
-            reason=f"策略拒绝：{self.description}（命令: {command}）",
+            reason=(
+                f"[{self.name}] call_action aiid={aiid} 被策略拦截：{self.description}"
+            ),
             rule_name=self.name,
         )
+
+
+# ─── 引擎 ─────────────────────────────────────────────────────────────────────
 
 
 @dataclass
 class PolicyEngine:
-    """策略引擎：按顺序检查所有规则。"""
+    """按顺序评估规则链，第一个拦截立即返回。"""
+
     rules: list[PolicyRule] = field(default_factory=list)
 
     def evaluate(
         self, device: Device, command: str, params: dict[str, Any]
     ) -> PolicyViolation | None:
-        """顺序评估所有规则，第一条命中即拦截。"""
         for rule in self.rules:
-            violation = rule.check(device, command, params)
-            if violation and violation.blocked:
-                logger.warning(
-                    "策略拦截 [%s]: device=%s command=%s reason=%s",
-                    rule.name, device.id, command, violation.reason
-                )
-                return violation
+            result = rule.check(device, command, params)
+            if result is not None:
+                return result
         return None
 
 
-# ─────────────────────────────────────────────
-# 默认策略集（生产用）
-# ─────────────────────────────────────────────
+# ─── 默认策略 ─────────────────────────────────────────────────────────────────
+
+_LITTER_BOX_FRAGMENT = "petjc"
+
 
 def build_default_policy_engine() -> PolicyEngine:
-    """构造默认策略引擎，包含所有内置安全规则。"""
-    return PolicyEngine(rules=[
-        # 猫砂盆：绝对禁止 Empty（清空/清倒）模式
-        # 除非 params 里带 _force="CONFIRM_EMPTY"
-        BlockedCommandRule(
-            name="litter_box_no_empty",
-            description="猫砂盆禁止执行 Empty（清空）操作，防止意外清空",
-            device_id_fragment="petjc",           # 匹配猫砂盆设备 ID 前缀
-            blocked_commands=["empty", "Empty", "set_empty", "call_empty"],
-            override_keyword="CONFIRM_EMPTY",
-        ),
-        # 猫砂盆：禁止直接 call_action 且 aiid=3（通常是倒猫砂动作）
-        # 说明：aiid 3 在部分固件版本对应 Empty，保守拦截
-        BlockedCommandRule(
-            name="litter_box_no_action_3",
-            description="猫砂盆禁止 call_action aiid=3（倒猫砂动作）",
-            device_id_fragment="petjc",
-            blocked_commands=["call_action"],
-            override_keyword="CONFIRM_EMPTY",
-        ),
-    ])
-
-
-# 全局默认实例（延迟初始化时也可以直接用）
-_default_engine: PolicyEngine | None = None
+    """构建默认策略引擎，包含猫砂盆 Empty 模式拦截规则。"""
+    return PolicyEngine(
+        rules=[
+            # 规则1：拦截 empty / Empty 命令
+            BlockedCommandRule(
+                name="litter_box_no_empty",
+                description="禁止对猫砂盆执行 Empty（清空）模式，防止意外倾倒猫砂",
+                device_id_fragment=_LITTER_BOX_FRAGMENT,
+                blocked_commands=["empty", "Empty"],
+            ),
+            # 规则2：拦截 call_action aiid=3（MIoT Empty action）
+            CallActionParamRule(
+                name="litter_box_no_action_3",
+                description="禁止对猫砂盆执行 call_action aiid=3（MIoT Empty 指令）",
+                device_id_fragment=_LITTER_BOX_FRAGMENT,
+                blocked_aiids=[3],
+            ),
+        ]
+    )
 
 
 def get_default_policy_engine() -> PolicyEngine:
-    global _default_engine
-    if _default_engine is None:
-        _default_engine = build_default_policy_engine()
-    return _default_engine
+    """service.py 注入点 — 返回默认策略引擎实例。"""
+    return build_default_policy_engine()

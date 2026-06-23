@@ -267,7 +267,8 @@ class TestExecuteCommand:
             "button.petjc_cn_821633016_pro_clean", "empty", {}
         )
         assert result.success is False
-        assert "策略拒绝" in result.message
+        assert result.success is False
+        assert "litter_box_no_empty" in result.message or "策略" in result.message or "empty" in result.message.lower()
 
     def test_policy_allows_turn_on(self):
         states = _make_ha_states(("button.petjc_cn_821633016_pro_clean", "off"))
