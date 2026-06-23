@@ -98,10 +98,11 @@ lumi
 | `GET /api/status` | 运行时详情（设备分布/场景数/bridge冷却/WS连接数） |
 | `GET /api/device_graph` | 完整设备图 |
 | `GET /api/device_graph/summary` | 设备图摘要（供 Hermes 分析） |
-| `GET /api/device_graph/search?q=` | 按关键词搜索设备 |
+| `GET /api/device_graph/types` | 设备类型分布（by_type + rooms） |
+| `GET /api/device_graph/search?q=` | 按关键词搜索设备（name/id/room/type） |
 | `GET /api/device_graph/rooms/{room}` | 按房间查询设备 |
 | `POST /api/device_graph/{id}/command` | 统一设备控制（策略守卫保护） |
-| `POST /api/device_graph/batch/command` | 批量设备控制 |
+| `POST /api/device_graph/batch/command` | 批量设备控制（并发执行） |
 | `GET /api/scenes` | 列出所有预设场景 |
 | `POST /api/scenes` | 创建/更新场景 |
 | `POST /api/scenes/{id}/execute` | 执行场景 |
