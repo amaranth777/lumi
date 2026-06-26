@@ -11,8 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
+from lumi.miloco.router import router as miloco_router
 from lumi.device_graph.router import router as device_graph_router
+from lumi.ha.router import router as ha_router
 from lumi.perception.router import router as perception_router
+from lumi.proactive.router import router as proactive_router
 from lumi.scenes.router import router as scenes_router
 from lumi.websocket import router as ws_router, manager as ws_manager
 
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期——启动时订阅 HA 事件。"""
     # 延迟导入避免循环
-    from lumi.deps import get_ha_client
+    from lumi.deps import get_ha_client, set_proactive_scheduler
     from lumi.ha.events import start_ha_event_listener
 
     ha_client = get_ha_client()
@@ -42,6 +45,48 @@ async def lifespan(app: FastAPI):
         task = None
         logger.info("HA 未启用，跳过事件监听")
 
+    # 启动主动巡检调度器
+    proactive_task = None
+    try:
+        from lumi.config import get_config
+        from lumi.deps import get_device_graph_service
+        from lumi.hermes_bridge import get_bridge
+        from lumi.proactive.analyzer import ProactiveAnalyzer
+        from lumi.proactive.rules import BUILTIN_RULES, LitterBoxLowSandRule
+        from lumi.proactive.scheduler import ProactiveScheduler
+
+        config = get_config()
+        if config.proactive.enabled:
+            # 按配置实例化规则
+            rules = []
+            for rule_name in config.proactive.rules:
+                rule_cls = BUILTIN_RULES.get(rule_name)
+                if rule_cls is None:
+                    logger.warning("未知巡检规则: %s，跳过", rule_name)
+                    continue
+                if rule_cls is LitterBoxLowSandRule:
+                    rules.append(rule_cls(litter_low_kg=config.pet.litter_low_kg))
+                else:
+                    rules.append(rule_cls())
+
+            analyzer = ProactiveAnalyzer(rules=rules, config=config)
+            scheduler = ProactiveScheduler(
+                analyzer=analyzer,
+                device_graph_svc=get_device_graph_service(),
+                ha_client=get_ha_client(),
+                hermes_bridge=get_bridge(),
+                interval_seconds=config.proactive.interval_seconds,
+                min_alert_interval_seconds=config.proactive.min_alert_interval_seconds,
+            )
+            set_proactive_scheduler(scheduler)
+            await scheduler.start()
+            proactive_task = scheduler._task
+            logger.info("主动巡检调度器已启动")
+        else:
+            logger.info("主动巡检已禁用，跳过")
+    except Exception as e:
+        logger.error("主动巡检调度器启动失败: %s", e)
+
     yield  # 应用运行期间
 
     if task:
@@ -51,6 +96,14 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
         logger.info("HA 事件监听器已停止")
+
+    if proactive_task:
+        proactive_task.cancel()
+        try:
+            await proactive_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("主动巡检调度器已停止")
 
 
 import lumi as _lumi_pkg
@@ -78,8 +131,11 @@ if static_dir.exists():
     app.mount("/ui", StaticFiles(directory=str(static_dir), html=True), name="static")
 
 # API 路由
+app.include_router(miloco_router)
 app.include_router(device_graph_router)
+app.include_router(ha_router)
 app.include_router(perception_router)
+app.include_router(proactive_router)
 app.include_router(scenes_router)
 app.include_router(ws_router)
 
