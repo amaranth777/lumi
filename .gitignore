@@ -12,3 +12,12 @@ build/
 htmlcov/
 coverage.xml
 
+
+# 明文密码文件（统一存 home-secrets 仓库，绝不提交）
+secrets.md
+secrets.yaml
+secrets/
+credentials/
+*.secret.*
+*password*
+*passwd*
