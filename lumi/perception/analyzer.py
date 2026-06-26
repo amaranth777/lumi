@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from lumi.config import get_config
 from lumi.perception.events import PerceptionEvent, PerceptionEventType
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,17 @@ class PerceptionAnalyzer:
             return self._analyze_litter_box_weight_low(event)
 
         if event.event_type == PerceptionEventType.PET_WEIGHED:
-            return self._analyze_pet_weighed(event)
+            alerts, reason = self._analyze_pet_weighed(event)
+            if alerts:
+                return PerceptionDecision(
+                    should_notify=True,
+                    message="⚖️ " + "；".join(alerts) + "，数值异常，请关注。",
+                    reason=f"体重异常: {alerts}",
+                )
+            return PerceptionDecision(
+                should_notify=False,
+                reason=reason,
+            )
 
         if event.event_type == PerceptionEventType.MOTION_DETECTED:
             # 普通移动检测，不通知
@@ -210,7 +221,6 @@ class PerceptionAnalyzer:
 
     def _analyze_litter_box_weight_low(self, event: PerceptionEvent) -> PerceptionDecision:
         """猫砂余量不足——通知补砂。"""
-        from lumi.config import get_config
         pet_cfg = get_config().pet
 
         weight = event.context.get("weight_kg")
@@ -230,29 +240,53 @@ class PerceptionAnalyzer:
             reason=f"猫砂余量低于 {threshold}kg",
         )
 
-    def _analyze_pet_weighed(self, event: PerceptionEvent) -> PerceptionDecision:
-        """宠物称重完成——记录体重，异常时通知。"""
-        from lumi.config import get_config
-        pet_cfg = get_config().pet
+    def _analyze_pet_weighed(self, event: PerceptionEvent) -> tuple[list[str], str]:
+        """宠物称重完成——返回 (告警列表, reason)，无异常时告警列表为空。"""
+        config = get_config()
+        weight_kg = event.context.get("weight_kg")
+        if weight_kg is None:
+            return [], "称重数据缺失"
 
-        subject = event.primary_subject()
-        name = (subject.name or pet_cfg.name) if subject else pet_cfg.name
-        weight = event.context.get("weight_kg")
+        pet_cfg = config.pet
 
-        if weight is None:
-            return PerceptionDecision(should_notify=False, reason="称重数据缺失")
+        # 多猫模式
+        if pet_cfg.cats:
+            # 1. 先从 event.context 里找 cat_name
+            cat_name = None
+            if event.context:
+                cat_name = event.context.get("cat_name")
 
-        if weight < pet_cfg.weight_min_kg or weight > pet_cfg.weight_max_kg:
-            return PerceptionDecision(
-                should_notify=True,
-                message=f"⚖️ {name} 体重 {weight:.2f}kg，数值异常，请关注。",
-                reason=f"体重异常: {weight:.2f}kg",
-            )
+            # 2. 找到对应档案
+            profile = None
+            if cat_name:
+                profile = next((c for c in pet_cfg.cats if c.name == cat_name), None)
 
-        return PerceptionDecision(
-            should_notify=False,
-            reason=f"{name} 体重 {weight:.2f}kg，正常范围",
-        )
+            # 3. 如果没找到，用体重范围模糊匹配
+            if profile is None:
+                for c in pet_cfg.cats:
+                    if c.weight_min_kg <= weight_kg <= c.weight_max_kg:
+                        profile = c
+                        break
+
+            # 4. 还没找到，取第一只
+            if profile is None:
+                profile = pet_cfg.cats[0]
+
+            name = profile.name
+            w_min, w_max = profile.weight_min_kg, profile.weight_max_kg
+        else:
+            # 单猫兼容模式
+            name = pet_cfg.name
+            w_min, w_max = pet_cfg.weight_min_kg, pet_cfg.weight_max_kg
+
+        alerts: list[str] = []
+        if weight_kg < w_min:
+            alerts.append(f"{name} 体重偏轻 ({weight_kg:.2f}kg < {w_min}kg)")
+        elif weight_kg > w_max:
+            alerts.append(f"{name} 体重偏重 ({weight_kg:.2f}kg > {w_max}kg)")
+
+        reason = f"{name} 体重 {weight_kg:.2f}kg，正常范围" if not alerts else f"体重异常: {alerts}"
+        return alerts, reason
 
     def _analyze_anomaly_detected(self, event: PerceptionEvent) -> PerceptionDecision:
         """检测到异常——通知。"""
