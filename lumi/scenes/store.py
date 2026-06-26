@@ -23,7 +23,9 @@ class Scene(BaseModel):
     id: str
     name: str
     icon: str | None = None
-    actions: list[SceneAction]
+    description: str | None = None
+    actions: list[SceneAction] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class SceneStore:

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from lumi.device_graph.schema import BatchCommandResponse
 from lumi.device_graph.service import DeviceGraphService
-from lumi.deps import get_device_graph_service, get_scene_store
+from lumi.deps import get_device_graph_service, get_ha_client, get_scene_store
 from lumi.scenes.store import Scene, SceneStore
 
 router = APIRouter(prefix="/api/scenes", tags=["scenes"])
@@ -79,6 +79,23 @@ def execute_scene(
     scene = store.get(scene_id)
     if not scene:
         raise HTTPException(status_code=404, detail=f"场景不存在: {scene_id}")
+
+    # HA 自动化场景：直接触发对应自动化
+    if scene.metadata.get("source") == "ha_automation":
+        ha_entity_id = scene.metadata.get("ha_entity_id", "")
+        ha = get_ha_client()
+        if ha is None:
+            raise HTTPException(status_code=503, detail="HA client 未初始化或未启用")
+        success = ha.trigger_automation(ha_entity_id)
+        response = BatchCommandResponse(
+            total=1,
+            success=1 if success else 0,
+            failed=0 if success else 1,
+            results=[],
+        )
+        _log_scene_execution(scene_id, scene.name, response)
+        logger.info("HA 自动化场景执行: %s (%s) — %s", scene.name, scene_id, "成功" if success else "失败")
+        return response
 
     results = []
     for action in scene.actions:
