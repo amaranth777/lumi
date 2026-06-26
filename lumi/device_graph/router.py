@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from lumi.device_graph.schema import (
     BatchCommandRequest,
@@ -22,9 +23,10 @@ router = APIRouter(prefix="/api/device_graph", tags=["device_graph"])
 @router.get("", response_model=DeviceGraph)
 def get_device_graph(
     refresh: bool = Query(False),
+    force_refresh: bool = Query(False),
     service: DeviceGraphService = Depends(get_device_graph_service),
 ) -> DeviceGraph:
-    return service.get_graph(force_refresh=refresh)
+    return service.get_graph(force_refresh=refresh or force_refresh)
 
 
 @router.get("/summary", response_model=DeviceGraphSummary)
@@ -73,6 +75,19 @@ def batch_execute_command(
     service: DeviceGraphService = Depends(get_device_graph_service),
 ) -> BatchCommandResponse:
     return service.batch_execute_command(body.device_ids, body.command, body.params)
+
+
+class RefreshIncrementalRequest(BaseModel):
+    since_seconds: int = 60
+
+
+@router.post("/refresh_incremental")
+def refresh_incremental(
+    body: RefreshIncrementalRequest = RefreshIncrementalRequest(),
+    service: DeviceGraphService = Depends(get_device_graph_service),
+) -> dict:
+    updated = service.refresh_incremental(since_seconds=body.since_seconds)
+    return {"updated": updated, "message": f"增量刷新完成，更新 {updated} 个设备"}
 
 
 # 通配符路径放最后，避免吃掉其他路由

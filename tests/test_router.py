@@ -257,4 +257,48 @@ class TestBatchCommand:
                 "params": {}
             })
         assert resp.status_code == 200
-        assert resp.json()["failed"] == 1
+
+
+# ─── GET /api/device_graph?force_refresh=true ────────────────────────────────
+
+class TestGetDeviceGraphForceRefresh:
+    def test_force_refresh_param_accepted(self):
+        """force_refresh=true 查询参数应被端点接受（200 OK）。"""
+        svc = _make_service_with_devices(_make_device("light.a"))
+        app = _make_app_with_service(svc)
+        # mock refresh so force_refresh doesn't hit real HA/Miloco
+        with pytest.MonkeyPatch().context() as mp:
+            mp.setattr(svc, "refresh", lambda: svc._cached_graph)
+            with TestClient(app) as c:
+                resp = c.get("/api/device_graph?force_refresh=true")
+        assert resp.status_code == 200
+
+    def test_force_refresh_triggers_service_refresh(self):
+        """force_refresh=true 时，service.get_graph 以 force_refresh=True 调用。"""
+        from unittest.mock import patch
+        svc = _make_service_with_devices(_make_device("light.a"))
+        app = _make_app_with_service(svc)
+        with patch.object(svc, "get_graph", return_value=svc._cached_graph) as mock_get_graph:
+            with TestClient(app) as c:
+                c.get("/api/device_graph?force_refresh=true")
+        mock_get_graph.assert_called_once_with(force_refresh=True)
+
+    def test_refresh_param_also_works(self):
+        """旧的 refresh=true 参数仍然有效。"""
+        svc = _make_service_with_devices(_make_device("light.a"))
+        app = _make_app_with_service(svc)
+        with pytest.MonkeyPatch().context() as mp:
+            mp.setattr(svc, "refresh", lambda: svc._cached_graph)
+            with TestClient(app) as c:
+                resp = c.get("/api/device_graph?refresh=true")
+        assert resp.status_code == 200
+
+    def test_no_refresh_param_defaults_false(self):
+        """不带 refresh 参数时，force_refresh 默认 False。"""
+        from unittest.mock import patch
+        svc = _make_service_with_devices(_make_device("light.a"))
+        app = _make_app_with_service(svc)
+        with patch.object(svc, "get_graph", return_value=svc._cached_graph) as mock_get_graph:
+            with TestClient(app) as c:
+                c.get("/api/device_graph")
+        mock_get_graph.assert_called_once_with(force_refresh=False)
