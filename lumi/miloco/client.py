@@ -71,6 +71,17 @@ class MilocoClient:
 
     # =========== 设备列表 ===========
 
+    def get_camera_list(self) -> list[dict[str, Any]]:
+        """获取 Miloco 摄像头设备列表。"""
+        try:
+            result = self._request("GET", "/camera_list")
+            if isinstance(result, dict):
+                return result.get("data", result.get("cameras", []))
+            return result if isinstance(result, list) else []
+        except Exception as e:
+            logger.warning("Miloco get_camera_list 失败: %s", e)
+            return []
+
     def get_device_list(self) -> list[dict[str, Any]]:
         """获取所有 MIoT 设备列表。"""
         try:
