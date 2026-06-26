@@ -21,6 +21,7 @@ from lumi.device_graph.schema import (
 from lumi.miloco.fusion import miloco_devices_to_lumi
 
 if TYPE_CHECKING:
+    from lumi.config import DeviceAliasConfig
     from lumi.ha.client import HAClient
     from lumi.miloco.client import MilocoClient
 
@@ -40,14 +41,47 @@ class DeviceGraphService:
         aliases: list[dict[str, Any]] | None = None,
         policy_engine: PolicyEngine | None = None,
         cache_ttl: int = _CACHE_TTL,
+        alias_configs: list[DeviceAliasConfig] | None = None,
     ) -> None:
         self.ha_client = ha_client
         self.miloco_client = miloco_client
         self.aliases = aliases or []
         self.policy_engine = policy_engine or get_default_policy_engine()
         self.cache_ttl = cache_ttl
+        self.alias_configs = alias_configs or []
         self._cached_graph: DeviceGraph | None = None
         self._cache_time: float = 0.0  # 最后一次刷新的时间戳
+
+    def _apply_alias_configs(self, devices: list[Device]) -> list[Device]:
+        """根据 alias_configs 覆盖设备 name / room / policies。"""
+        if not self.alias_configs:
+            return devices
+
+        result: list[Device] = list(devices)
+        for alias in self.alias_configs:
+            for i, dev in enumerate(result):
+                matched = False
+
+                # 按 miot_match 前缀匹配 Miloco 设备 did
+                if alias.miot_match:
+                    did: str = dev.attributes.get("did", "")
+                    if did and did.startswith(alias.miot_match):
+                        matched = True
+
+                # 按 ha_entities 交集匹配（HA 平台设备 id 即 entity_id）
+                if not matched and alias.ha_entities:
+                    if dev.id in alias.ha_entities:
+                        matched = True
+
+                if matched:
+                    updates: dict[str, Any] = {"name": alias.name}
+                    if alias.room is not None:
+                        updates["room"] = alias.room
+                    if alias.policies:
+                        updates["policies"] = alias.policies
+                    result[i] = dev.model_copy(update=updates)
+
+        return result
 
     def refresh(self) -> DeviceGraph:
         devices: list[Device] = []
@@ -74,6 +108,9 @@ class DeviceGraphService:
                         devices = [ha_dev if d.id == dev.id else d for d in devices]
             devices.extend(new_devs)
             logger.info("从 Miloco 融合了 %d 个新设备", len(new_devs))
+
+        # 应用别名配置（覆盖 name / room / policies）
+        devices = self._apply_alias_configs(devices)
 
         rooms: dict[str, list[str]] = {}
         for dev in devices:
@@ -296,6 +333,24 @@ class DeviceGraphService:
             failed=len(results) - success_count,
             results=results,
         )
+
+    def refresh_incremental(self, since_seconds: int = 60) -> int:
+        """增量刷新：只处理最近 since_seconds 秒内变化的实体。
+        返回更新的设备数。
+        """
+        if not self.ha_client or self._cached_graph is None:
+            return 0
+        from datetime import datetime, timedelta, timezone
+        since = datetime.now(tz=timezone.utc) - timedelta(seconds=since_seconds)
+        changed = self.ha_client.get_states_since(since)
+        count = 0
+        for state in changed:
+            entity_id = state.get("entity_id", "")
+            new_state = state.get("state", "")
+            if self.update_device_state(entity_id, new_state):
+                count += 1
+        logger.info("增量刷新: %d 个实体变化，更新 %d 个设备", len(changed), count)
+        return count
 
     def get_devices_by_room(self, room: str) -> list[Device]:
         """按房间查询设备。"""

@@ -33,6 +33,7 @@ class ServerConfig(BaseModel):
     host: str = Field(default="127.0.0.1", description="监听地址")
     port: int = Field(default=8810, description="监听端口")
     token: str = Field(default="", description="API 鉴权 token")
+    ws_heartbeat_seconds: int = Field(default=30, description="WebSocket 心跳间隔（秒）")
 
 
 class MilocoConfig(BaseModel):
@@ -50,12 +51,57 @@ class MilocoConfig(BaseModel):
     )
 
 
+class DeviceAliasConfig(BaseModel):
+    """单个设备别名配置。"""
+
+    canonical_id: str = Field(..., description="规范设备 ID")
+    name: str = Field(..., description="覆盖显示名称")
+    room: str | None = Field(None, description="覆盖房间")
+    miot_match: str | None = Field(None, description="匹配 Miloco did/model 前缀")
+    ha_entities: list[str] = Field(default_factory=list, description="绑定的 HA entity_id 列表")
+    policies: dict[str, Any] = Field(default_factory=dict, description="forbidden_actions / allowed_actions")
+
+
+class DeviceGraphConfig(BaseModel):
+    """设备图配置（别名等）。"""
+
+    aliases: list[DeviceAliasConfig] = Field(default_factory=list, description="设备别名列表")
+
+
+class ProactiveConfig(BaseModel):
+    """主动巡检配置。"""
+
+    enabled: bool = Field(default=True, description="是否启用主动巡检")
+    interval_seconds: int = Field(default=300, description="巡检间隔（秒），默认 5 分钟")
+    min_alert_interval_seconds: int = Field(
+        default=1800, description="同一告警最短重推间隔（秒），默认 30 分钟"
+    )
+    rules: list[str] = Field(
+        default_factory=lambda: ["litter_box_full", "litter_box_low_sand", "temperature", "humidity"],
+        description="启用的规则列表",
+    )
+    rules_file: str = Field(
+        default="~/.lumi/rules.yaml",
+        description="自定义规则配置文件路径（可选，文件不存在则跳过）",
+    )
+    auto_execute: bool = Field(default=False, description="是否允许自动执行纠正动作（默认关闭，需显式开启）")
+
+
+class CatProfile(BaseModel):
+    """单只猫的档案。"""
+
+    name: str = Field(..., description="猫的名字")
+    weight_min_kg: float = Field(default=2.0, description="正常体重下限（kg）")
+    weight_max_kg: float = Field(default=8.0, description="正常体重上限（kg）")
+
+
 class PetConfig(BaseModel):
     """宠物相关配置。"""
     name: str = Field(default="猫猫", description="宠物名称")
     weight_min_kg: float = Field(default=2.0, description="体重异常下限（kg）")
     weight_max_kg: float = Field(default=8.0, description="体重异常上限（kg）")
     litter_low_kg: float = Field(default=1.0, description="猫砂余量告警阈值（kg）")
+    cats: list[CatProfile] = Field(default_factory=list, description="多猫档案列表，空时用单猫兼容模式")
 
 
 class LumiConfig(BaseModel):
@@ -65,6 +111,7 @@ class LumiConfig(BaseModel):
     ha: HAConfig = Field(default_factory=HAConfig)
     miloco: MilocoConfig = Field(default_factory=MilocoConfig)
     pet: PetConfig = Field(default_factory=PetConfig)
+    proactive: ProactiveConfig = Field(default_factory=ProactiveConfig)
     device_aliases: list[dict[str, Any]] = Field(
         default_factory=list,
         description="设备手动映射配置",
@@ -72,6 +119,10 @@ class LumiConfig(BaseModel):
     cache_ttl: int = Field(
         default=300,
         description="设备图缓存 TTL（秒），默认 5 分钟",
+    )
+    device_graph: DeviceGraphConfig = Field(
+        default_factory=DeviceGraphConfig,
+        description="设备图配置（别名等）",
     )
 
 

@@ -12,6 +12,7 @@ _ha_client: HAClient | None = None
 _miloco_client: MilocoClient | None = None
 _device_graph_service: DeviceGraphService | None = None
 _scene_store: SceneStore | None = None
+_proactive_scheduler = None  # ProactiveScheduler | None
 
 
 def get_ha_client() -> HAClient | None:
@@ -58,6 +59,7 @@ def get_device_graph_service() -> DeviceGraphService:
             miloco_client=miloco_client,
             aliases=config.device_aliases,
             cache_ttl=config.cache_ttl,
+            alias_configs=config.device_graph.aliases,
         )
     return _device_graph_service
 
@@ -68,3 +70,15 @@ def get_scene_store() -> SceneStore:
     if _scene_store is None:
         _scene_store = SceneStore()
     return _scene_store
+
+
+def get_proactive_scheduler():
+    """获取主动巡检调度器（单例）。未启用时返回 None。"""
+    return _proactive_scheduler
+
+
+def set_proactive_scheduler(scheduler) -> None:
+    """设置主动巡检调度器实例（由 lifespan 调用）。"""
+    global _proactive_scheduler
+    _proactive_scheduler = scheduler
+

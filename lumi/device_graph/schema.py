@@ -23,6 +23,7 @@ class Device(BaseModel):
     room: str | None = Field(None, description="所属房间")
     icon: str | None = Field(None, description="图标标识")
     metadata: dict[str, Any] = Field(default_factory=dict, description="元信息")
+    policies: dict[str, Any] = Field(default_factory=dict, description="设备策略（forbidden_actions / allowed_actions）")
 
 
 class DeviceGraph(BaseModel):
