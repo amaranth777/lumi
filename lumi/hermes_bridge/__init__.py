@@ -176,12 +176,15 @@ class HermesBridge:
 
         # 推送
         try:
-            resp = _hermes_send(decision.message, self.target)
+            final_message = decision.message
+            if event.image_url:
+                final_message = f"{decision.message}\n摄像头截图：{event.image_url}"
+            resp = _hermes_send(final_message, self.target)
             self.cooldown.mark_sent(cooldown_key)
             result = NotifyResult(
                 success=True,
                 target=self.target,
-                message=decision.message,
+                message=final_message,
                 response=resp,
             )
             logger.info("推送成功: target=%s event=%s", self.target, event.event_type)
@@ -195,6 +198,30 @@ class HermesBridge:
             logger.error("推送失败: %s", e)
 
         self._write_log(event, decision, result)
+        return result
+
+    def send_notification(self, message: str) -> NotifyResult:
+        """直接推送纯文本通知（不需要 PerceptionEvent/Decision）。
+
+        用于主动巡检报告等场景。
+        """
+        try:
+            resp = _hermes_send(message, self.target)
+            result = NotifyResult(
+                success=True,
+                target=self.target,
+                message=message,
+                response=resp,
+            )
+            logger.info("send_notification 推送成功: target=%s", self.target)
+        except Exception as e:
+            result = NotifyResult(
+                success=False,
+                target=self.target,
+                message=message,
+                error=str(e),
+            )
+            logger.error("send_notification 推送失败: %s", e)
         return result
 
     def _write_log(

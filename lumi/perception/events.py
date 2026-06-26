@@ -54,6 +54,10 @@ class PerceptionEvent(BaseModel):
     # 关联设备
     related_device_ids: list[str] = Field(default_factory=list)
 
+    # 图片 URL（摄像头截图）
+    image_url: str | None = None        # 摄像头截图 URL（Miloco 提供）
+    thumbnail_url: str | None = None    # 缩略图 URL（可选）
+
     # 原始 payload（保留供 debug）
     raw: dict[str, Any] = Field(default_factory=dict)
 
@@ -86,6 +90,8 @@ class PerceptionEvent(BaseModel):
             room=payload.get("room"),
             subjects=subjects,
             related_device_ids=payload.get("related_device_ids", []),
+            image_url=payload.get("image_url") or payload.get("snapshot_url") or payload.get("photo_url"),
+            thumbnail_url=payload.get("thumbnail_url"),
             raw=payload,
             context=_extract_context(event_type, payload),
         )
