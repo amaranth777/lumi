@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from lumi.deps import get_device_graph_service
+from lumi.config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,14 @@ class ConnectionManager:
             "data": payload,
         })
 
+    async def broadcast_alert(self, alerts: list[dict]) -> None:
+        """广播主动巡检告警到所有 WebSocket 客户端。"""
+        await self.broadcast({
+            "type": "proactive_alert",
+            "alerts": alerts,
+            "count": len(alerts),
+        })
+
 
 manager = ConnectionManager()
 
@@ -85,14 +94,15 @@ async def websocket_device_graph(websocket: WebSocket) -> None:
 
         # 保持连接：等待客户端消息（ping/pong/close）
         # 增量更新由 ha/events.py 的 _handle_ha_event → manager.broadcast 推入
+        heartbeat = get_config().server.ws_heartbeat_seconds
         while True:
             try:
-                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=heartbeat)
                 # 客户端发来 ping，回 pong
                 if msg == "ping":
                     await websocket.send_text("pong")
             except asyncio.TimeoutError:
-                # 30s 无消息，发心跳
+                # 无消息超时，发心跳
                 await websocket.send_json({"type": "ping"})
 
     except WebSocketDisconnect:

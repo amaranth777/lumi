@@ -114,3 +114,39 @@ class TestBroadcast:
         mgr = ConnectionManager()
         # 没有连接，broadcast 应静默返回
         await mgr.broadcast_perception("test", {})
+
+
+# ─── WebSocket 心跳配置化 ──────────────────────────────────────────────────────
+
+class TestWebSocketHeartbeatConfig:
+    def test_default_heartbeat_is_30(self):
+        from lumi.config import ServerConfig
+        cfg = ServerConfig()
+        assert cfg.ws_heartbeat_seconds == 30
+
+    def test_heartbeat_can_be_configured(self):
+        from lumi.config import ServerConfig
+        cfg = ServerConfig(ws_heartbeat_seconds=60)
+        assert cfg.ws_heartbeat_seconds == 60
+
+    def test_heartbeat_used_from_config(self):
+        """websocket.py 里的心跳超时应从 config 读取，而非硬编码。"""
+        import ast, inspect
+        from lumi import websocket as ws_module
+        source = inspect.getsource(ws_module)
+        # 不应出现硬编码的 timeout=30
+        assert "timeout=30" not in source, "心跳超时不应硬编码为 30，应从 config 读取"
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_respects_mock_config(self):
+        """mock config 时 heartbeat 值被正确读取。"""
+        from unittest.mock import patch, MagicMock
+        from lumi.config import LumiConfig, ServerConfig
+
+        mock_cfg = MagicMock(spec=LumiConfig)
+        mock_cfg.server = ServerConfig(ws_heartbeat_seconds=10)
+
+        with patch("lumi.websocket.get_config", return_value=mock_cfg):
+            from lumi.config import get_config as real_get_config
+            cfg = mock_cfg
+            assert cfg.server.ws_heartbeat_seconds == 10

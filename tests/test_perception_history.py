@@ -255,8 +255,11 @@ class TestHistoryEndpoints:
             with TestClient(app) as client:
                 resp = client.get("/api/perception/history")
         assert resp.status_code == 200
-        assert "events" in resp.json()
-        assert "count" in resp.json()
+        data = resp.json()
+        assert "events" in data
+        assert "total" in data
+        assert "limit" in data
+        assert "offset" in data
 
     def test_stats_endpoint_returns_200(self):
         from fastapi.testclient import TestClient
@@ -277,11 +280,119 @@ class TestHistoryEndpoints:
         from lumi.main import app
         from lumi.perception.history import PerceptionHistory
 
-        mock_history = PerceptionHistory(max_events=50, log_path="/tmp/test_hist_limit.jsonl")
+        mock_history = PerceptionHistory(max_events=50, log_path="/tmp/test_hist_limit.jsonl",
+                                         load_from_file=False)
         for i in range(10):
             mock_history.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
 
         with patch("lumi.perception.router.get_history", return_value=mock_history):
             with TestClient(app) as client:
                 resp = client.get("/api/perception/history?limit=3")
-        assert resp.json()["count"] == 3
+        data = resp.json()
+        assert len(data["events"]) == 3
+        assert data["total"] == 10
+        assert data["limit"] == 3
+
+
+# ─── 分页 get_page / get_total ────────────────────────────────────────────────
+
+class TestGetPage:
+    def test_get_total_empty(self, tmp_path):
+        h = PerceptionHistory(max_events=10, log_path=str(tmp_path / "t.jsonl"))
+        assert h.get_total() == 0
+
+    def test_get_total_after_records(self, tmp_path):
+        h = PerceptionHistory(max_events=10, log_path=str(tmp_path / "t.jsonl"))
+        for i in range(5):
+            h.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+        assert h.get_total() == 5
+
+    def test_get_page_first_page(self, tmp_path):
+        h = PerceptionHistory(max_events=20, log_path=str(tmp_path / "t.jsonl"))
+        for i in range(10):
+            h.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+        page = h.get_page(limit=3, offset=0)
+        assert len(page) == 3
+
+    def test_get_page_offset(self, tmp_path):
+        h = PerceptionHistory(max_events=20, log_path=str(tmp_path / "t.jsonl"))
+        for i in range(10):
+            h.record(_entry(ts=f"2026-06-23T{i:02d}:00:00", event_type=f"evt_{i}"))
+        # newest-first order: evt_9, evt_8, ..., evt_0
+        page0 = h.get_page(limit=5, offset=0)
+        page1 = h.get_page(limit=5, offset=5)
+        # pages should not overlap
+        types0 = {e.event_type for e in page0}
+        types1 = {e.event_type for e in page1}
+        assert types0.isdisjoint(types1)
+        assert len(page0) == 5
+        assert len(page1) == 5
+
+    def test_get_page_offset_beyond_total_returns_empty(self, tmp_path):
+        h = PerceptionHistory(max_events=20, log_path=str(tmp_path / "t.jsonl"))
+        for i in range(5):
+            h.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+        page = h.get_page(limit=10, offset=100)
+        assert page == []
+
+    def test_get_page_partial_last_page(self, tmp_path):
+        h = PerceptionHistory(max_events=20, log_path=str(tmp_path / "t.jsonl"))
+        for i in range(7):
+            h.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+        page = h.get_page(limit=5, offset=5)
+        assert len(page) == 2  # only 2 remain after offset=5
+
+
+class TestHistoryEndpointPagination:
+    def test_offset_param_returns_correct_events(self):
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch
+        from lumi.main import app
+
+        mock_history = PerceptionHistory(max_events=50, log_path="/tmp/test_hist_offset.jsonl",
+                                         load_from_file=False)
+        for i in range(15):
+            mock_history.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+
+        with patch("lumi.perception.router.get_history", return_value=mock_history):
+            with TestClient(app) as client:
+                resp = client.get("/api/perception/history?limit=10&offset=5")
+        data = resp.json()
+        assert resp.status_code == 200
+        assert len(data["events"]) == 10
+        assert data["total"] == 15
+        assert data["offset"] == 5
+
+    def test_offset_beyond_total_returns_empty_events(self):
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch
+        from lumi.main import app
+
+        mock_history = PerceptionHistory(max_events=20, log_path="/tmp/test_hist_empty.jsonl",
+                                         load_from_file=False)
+        for i in range(5):
+            mock_history.record(_entry(ts=f"2026-06-23T{i:02d}:00:00"))
+
+        with patch("lumi.perception.router.get_history", return_value=mock_history):
+            with TestClient(app) as client:
+                resp = client.get("/api/perception/history?offset=999")
+        data = resp.json()
+        assert resp.status_code == 200
+        assert data["events"] == []
+        assert data["total"] == 5
+
+    def test_response_contains_all_pagination_fields(self):
+        from fastapi.testclient import TestClient
+        from unittest.mock import patch
+        from lumi.main import app
+
+        mock_history = PerceptionHistory(max_events=20, log_path="/tmp/test_hist_fields.jsonl",
+                                         load_from_file=False)
+        mock_history.record(_entry())
+
+        with patch("lumi.perception.router.get_history", return_value=mock_history):
+            with TestClient(app) as client:
+                resp = client.get("/api/perception/history?limit=10&offset=0")
+        data = resp.json()
+        for key in ("events", "total", "limit", "offset"):
+            assert key in data, f"missing key: {key}"

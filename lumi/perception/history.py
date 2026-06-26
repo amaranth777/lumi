@@ -89,6 +89,15 @@ class PerceptionHistory:
             events = [e for e in events if e.room == room]
         return list(reversed(events))[:limit]
 
+    def get_page(self, limit: int = 50, offset: int = 0) -> list[HistoryEntry]:
+        """分页获取历史（newest-first），offset 从 0 开始。"""
+        events = list(reversed(list(self._events)))
+        return events[offset:offset + limit]
+
+    def get_total(self) -> int:
+        """返回历史记录总数。"""
+        return len(self._events)
+
     def get_stats(self) -> dict[str, Any]:
         """返回统计摘要。"""
         events = list(self._events)

@@ -11,17 +11,25 @@ import time
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel
 
 from lumi.perception.events import PerceptionEvent, PerceptionEventType
 from lumi.perception.analyzer import PerceptionAnalyzer, PerceptionDecision
 from lumi.hermes_bridge import get_bridge
 from lumi.perception.history import HistoryEntry, get_history
+from lumi.deps import get_device_graph_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/perception", tags=["perception"])
+
+# 触发设备图缓存失效的感知事件集合
+_REFRESH_TRIGGER_EVENTS: frozenset[str] = frozenset([
+    "litter_box_full",
+    "litter_box_cleaned",
+    "litter_box_weight_low",
+])
 
 
 # ─── 请求 / 响应模型 ───────────────────────────────────────────────────────────
@@ -148,6 +156,16 @@ async def receive_webhook(
         _record_history(event, result)
     except Exception as e:
         logger.debug("记录感知历史失败（非致命）: %s", e)
+
+    # 感知事件完成后，触发设备图增量刷新
+    if event.event_type.value in _REFRESH_TRIGGER_EVENTS:
+        try:
+            svc = get_device_graph_service()
+            svc.invalidate_cache()
+            logger.info("感知事件 %s 触发设备图缓存失效", event.event_type)
+        except Exception as e:
+            logger.warning("触发设备图刷新失败: %s", e)
+
     return result
 
 
@@ -177,23 +195,33 @@ async def test_webhook(payload: WebhookRequest) -> WebhookResponse:
 
 @router.get("/history")
 async def get_perception_history(
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     event_type: str | None = None,
     room: str | None = None,
 ) -> dict[str, Any]:
-    """查询最近的感知事件历史。
+    """查询感知事件历史（支持分页）。
 
     参数：
     - limit: 返回条数（默认 20，最大 200）
+    - offset: 跳过条数（默认 0）
     - event_type: 按事件类型过滤（如 litter_box_full）
     - room: 按房间过滤（如 卫生间）
     """
-    limit = min(limit, 200)
     history = get_history()
-    events = history.get_recent(limit=limit, event_type=event_type, room=room)
+    if event_type or room:
+        # 过滤模式：用原有 get_recent 取全部再手动分页
+        all_events = history.get_recent(limit=history.get_total() or 200, event_type=event_type, room=room)
+        total = len(all_events)
+        events = all_events[offset:offset + limit]
+    else:
+        total = history.get_total()
+        events = history.get_page(limit=limit, offset=offset)
     return {
         "events": [e.to_dict() for e in events],
-        "count": len(events),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
     }
 
 

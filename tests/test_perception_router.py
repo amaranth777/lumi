@@ -377,5 +377,88 @@ class TestHistoryStatsEndpoints:
         with _client() as (c, _):
             resp = c.get("/api/perception/history?limit=5&event_type=litter_box_full")
         assert resp.status_code == 200
-        assert resp.json()["count"] <= 5
+        assert len(resp.json()["events"]) <= 5
+
+
+# ─── 感知事件触发设备图缓存失效 ───────────────────────────────────────────────
+
+class TestWebhookCacheInvalidation:
+    def _client_with_cache_mock(self):
+        """返回配好 mock 的 TestClient，包含 get_device_graph_service mock。"""
+        ha_client = MagicMock()
+        ha_client.get_states.return_value = []
+
+        class _CM:
+            def __enter__(self):
+                self._p1 = patch("lumi.deps.get_ha_client", return_value=ha_client)
+                self._p2 = patch("lumi.perception.router.get_bridge")
+                self._p3 = patch("lumi.perception.router._broadcast_perception")
+                self._p4 = patch("lumi.perception.router.get_device_graph_service")
+                self._p1.__enter__()
+                mock_bridge = self._p2.__enter__().return_value
+                mock_bridge.notify.return_value = MagicMock(
+                    success=True, skipped=False, skip_reason="", message=""
+                )
+                self._p3.__enter__()
+                self._mock_svc = self._p4.__enter__().return_value
+                self._mock_svc.invalidate_cache = MagicMock()
+                self._tc = TestClient(app, raise_server_exceptions=False)
+                return self._tc, self._mock_svc
+
+            def __exit__(self, *a):
+                self._p4.__exit__(*a)
+                self._p3.__exit__(*a)
+                self._p2.__exit__(*a)
+                self._p1.__exit__(*a)
+
+        return _CM()
+
+    def test_litter_box_full_triggers_invalidate_cache(self):
+        """litter_box_full 事件应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook", json={"event_type": "litter_box_full"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_called_once()
+
+    def test_litter_box_cleaned_triggers_invalidate_cache(self):
+        """litter_box_cleaned 事件应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook", json={"event_type": "litter_box_cleaned"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_called_once()
+
+    def test_litter_box_weight_low_triggers_invalidate_cache(self):
+        """litter_box_weight_low 事件应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook", json={"event_type": "litter_box_weight_low"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_called_once()
+
+    def test_pet_detected_does_not_trigger_invalidate_cache(self):
+        """pet_detected 事件不应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook", json={"event_type": "pet_detected"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_not_called()
+
+    def test_pet_weighed_does_not_trigger_invalidate_cache(self):
+        """pet_weighed 事件不应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook", json={"event_type": "pet_weighed"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_not_called()
+
+    def test_dry_run_does_not_trigger_invalidate_cache(self):
+        """dry run 端点（/webhook/test）不应触发 invalidate_cache。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            resp = c.post("/api/perception/webhook/test", json={"event_type": "litter_box_full"})
+        assert resp.status_code == 200
+        mock_svc.invalidate_cache.assert_not_called()
+
+    def test_invalidate_cache_failure_does_not_break_response(self):
+        """invalidate_cache 抛异常时，response 仍正常返回。"""
+        with self._client_with_cache_mock() as (c, mock_svc):
+            mock_svc.invalidate_cache.side_effect = RuntimeError("cache error")
+            resp = c.post("/api/perception/webhook", json={"event_type": "litter_box_full"})
+        assert resp.status_code == 200
 
