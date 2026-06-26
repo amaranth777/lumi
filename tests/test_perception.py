@@ -231,7 +231,17 @@ class TestAnalyzerGeneral:
 
 class TestAnalyzerNewEventTypes:
     def setup_method(self) -> None:
+        from unittest.mock import patch, MagicMock
+        from lumi.config import LumiConfig, PetConfig
+        cfg = MagicMock()
+        cfg.pet = PetConfig(name="麻薯", weight_min_kg=2.0, weight_max_kg=8.0, litter_low_kg=1.0, cats=[])
+        cfg.lumi = LumiConfig()
+        self._patch = patch("lumi.perception.analyzer.get_config", return_value=cfg)
+        self._patch.start()
         self.analyzer = PerceptionAnalyzer()
+
+    def teardown_method(self) -> None:
+        self._patch.stop()
 
     def test_litter_box_weight_low_with_weight(self) -> None:
         event = PerceptionEvent.from_miloco_webhook({"event_type": "litter_box_weight_low"})
