@@ -1,305 +1,660 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lumi 设备控制面板</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: #333;
-            padding: 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        h1 {
-            color: white;
-            text-align: center;
-            margin-bottom: 30px;
-            font-weight: 300;
-        }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
-        .stat-card .value { font-size: 32px; font-weight: bold; color: #667eea; }
-        .rooms {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-        }
-        .room-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .room-card h2 {
-            font-size: 18px;
-            margin-bottom: 15px;
-            color: #764ba2;
-            border-bottom: 2px solid #f0f0f0;
-            padding-bottom: 10px;
-        }
-        .device {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            transition: all 0.2s;
-        }
-        .device:hover { background: #e9ecef; }
-        .device-name {
-            font-weight: 500;
-            flex: 1;
-        }
-        .device-state {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .state-on { background: #d4edda; color: #155724; }
-        .state-off { background: #f8d7da; color: #721c24; }
-        .state-unknown { background: #e2e3e5; color: #383d41; }
-        .device-controls {
-            display: flex;
-            gap: 5px;
-            margin-left: 10px;
-        }
-        .btn {
-            padding: 6px 12px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-        }
-        .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .btn-on { background: #28a745; color: white; }
-        .btn-off { background: #dc3545; color: white; }
-        .btn-toggle { background: #667eea; color: white; }
-        .status {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background: #28a745;
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lumi 看板</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:        #0f1117;
+      --bg2:       #1a1d27;
+      --bg3:       #22263a;
+      --border:    #2e3350;
+      --text:      #e2e8f0;
+      --text-dim:  #7c8db5;
+      --accent:    #5b8dee;
+      --green:     #34d399;
+      --yellow:    #fbbf24;
+      --red:       #f87171;
+      --radius:    12px;
+      --gap:       16px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+                   'Microsoft YaHei', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── 顶部状态栏 ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 14px 24px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .topbar-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: .5px;
+      white-space: nowrap;
+    }
+    .topbar-pills {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-green  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+    .dot-red    { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+    .dot-yellow { background: var(--yellow);box-shadow: 0 0 6px var(--yellow); }
+    .dot-pulse  { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.4 } }
+
+    .topbar-time {
+      font-size: 12px;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    /* ── 主内容 ── */
+    .main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px var(--gap);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+    @media (max-width: 860px) {
+      .main { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .8px;
+    }
+
+    /* ── 告警区 ── */
+    .alert-list { display: flex; flex-direction: column; gap: 8px; }
+    .alert-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .alert-critical { background: rgba(248,113,113,.12); border-left: 3px solid var(--red); }
+    .alert-warning  { background: rgba(251,191,36,.10);  border-left: 3px solid var(--yellow); }
+    .alert-info     { background: rgba(91,141,238,.10);  border-left: 3px solid var(--accent); }
+    .alert-ok {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px;
+      border-radius: 8px;
+      background: rgba(52,211,153,.1);
+      border-left: 3px solid var(--green);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .alert-icon { flex-shrink: 0; font-size: 16px; }
+    .alert-body { flex: 1; }
+    .alert-title { font-weight: 600; color: var(--text); }
+    .alert-desc  { color: var(--text-dim); margin-top: 2px; font-size: 12px; }
+    .alert-time  { font-size: 11px; color: var(--text-dim); white-space: nowrap; margin-left: 4px; }
+
+    /* ── 设备摘要 ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      line-height: 1;
+    }
+    .stat-lbl {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+    .room-list { display: flex; flex-direction: column; gap: 6px; }
+    .room-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--bg3);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .room-name { color: var(--text); }
+    .room-count {
+      font-size: 12px;
+      color: var(--text-dim);
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 2px 8px;
+      border-radius: 12px;
+    }
+
+    /* ── WebSocket ── */
+    .ws-status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .event-list { display: flex; flex-direction: column; gap: 6px; }
+    .event-item {
+      padding: 8px 12px;
+      background: var(--bg3);
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .event-time  { color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+    .event-body  { color: var(--text); word-break: break-all; }
+    .event-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 16px; }
+
+    /* ── 快速操作 ── */
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover  { opacity: .85; }
+    .btn:active { transform: scale(.97); }
+    .btn-primary  { background: var(--accent); color: #fff; }
+    .btn-success  { background: var(--green);  color: #0f1117; }
+    .btn-sm {
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .btn-ghost {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-ghost:hover { background: var(--border); }
+
+    /* ── 跨列 ── */
+    .col-span-2 {
+      grid-column: 1 / -1;
+    }
+
+    /* ── 通知 toast ── */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 9999;
+    }
+    .toast {
+      padding: 12px 16px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      font-size: 13px;
+      max-width: 320px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.4);
+      animation: slideUp .25s ease;
+    }
+    .toast-err  { border-left-color: var(--red); }
+    .toast-ok   { border-left-color: var(--green); }
+    @keyframes slideUp {
+      from { opacity:0; transform:translateY(10px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── 加载状态 ── */
+    .loading { color: var(--text-dim); font-size: 13px; }
+    .err-msg  { color: var(--red); font-size: 13px; }
+
+    /* ── 滚动 ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
 </head>
 <body>
-    <div class="status">
-        <div class="status-dot"></div>
-        <span id="ws-status">连接中...</span>
+
+<!-- 顶部状态栏 -->
+<div class="topbar">
+  <div class="topbar-title">🏠 Lumi</div>
+  <div class="topbar-pills">
+    <div class="pill">
+      <div class="dot dot-yellow dot-pulse" id="ha-dot"></div>
+      <span id="ha-pill">HA 检测中…</span>
     </div>
-
-    <div class="container">
-        <h1>🏠 Lumi 智能家居控制面板</h1>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <h3>设备总数</h3>
-                <div class="value" id="total-devices">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>房间数量</h3>
-                <div class="value" id="total-rooms">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>开启设备</h3>
-                <div class="value" id="active-devices">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>HA 状态</h3>
-                <div class="value" id="ha-status">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>Miloco</h3>
-                <div class="value" id="miloco-status">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>Bridge</h3>
-                <div class="value" id="bridge-status">-</div>
-            </div>
-            <div class="stat-card">
-                <h3>WS 连接</h3>
-                <div class="value" id="ws-connections">-</div>
-            </div>
-        </div>
-
-        <div class="rooms" id="rooms-container"></div>
+    <div class="pill">
+      <div class="dot dot-yellow dot-pulse" id="miloco-dot"></div>
+      <span id="miloco-pill">Miloco 检测中…</span>
     </div>
+    <div class="pill">
+      <div class="dot dot-red" id="ws-dot"></div>
+      <span id="ws-pill">WS 未连接</span>
+    </div>
+    <div class="pill">
+      <span>设备</span>
+      <strong id="topbar-total">—</strong>
+    </div>
+  </div>
+  <div class="topbar-time" id="refresh-time">—</div>
+</div>
 
-    <script>
-        const API_BASE = window.location.origin;
-        const WS_URL = `ws://${window.location.host}/ws/device_graph`;
-        let ws;
+<!-- 主内容 -->
+<div class="main">
 
-        async function fetchHealth() {
-            try {
-                const res = await fetch(`${API_BASE}/health`);
-                const data = await res.json();
-                document.getElementById('ha-status').textContent =
-                    data.ha === 'ok' ? `✓ (${data.device_count}台)` : data.ha || '?';
-                document.getElementById('miloco-status').textContent =
-                    data.miloco === 'ok' ? '✓' : data.miloco || '?';
-            } catch (e) {
-                document.getElementById('ha-status').textContent = '离线';
-            }
+  <!-- 告警区 -->
+  <div class="card col-span-2">
+    <div class="card-header">
+      <div class="card-title">🔍 主动巡检 · 当前告警</div>
+      <button class="btn btn-ghost btn-sm" onclick="fetchProactive()">刷新</button>
+    </div>
+    <div id="alert-body" class="loading">加载中…</div>
+  </div>
 
-            try {
-                const res2 = await fetch(`${API_BASE}/api/status`);
-                const data2 = await res2.json();
-                const cooldowns = data2.bridge?.active_cooldowns ?? '-';
-                document.getElementById('bridge-status').textContent =
-                    cooldowns === 0 ? '✓ 空闲' : `${cooldowns} 冷却中`;
-                document.getElementById('ws-connections').textContent =
-                    data2.websocket?.connections ?? '-';
-            } catch (e) {
-                document.getElementById('bridge-status').textContent = '?';
-            }
+  <!-- 设备摘要 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📊 设备摘要</div>
+      <button class="btn btn-ghost btn-sm" onclick="fetchSummary()">刷新</button>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="stat-val" id="sum-total">—</div>
+        <div class="stat-lbl">总设备数</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="sum-ha">—</div>
+        <div class="stat-lbl">HA 设备</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="sum-miloco">—</div>
+        <div class="stat-lbl">Miloco 设备</div>
+      </div>
+    </div>
+    <div id="room-list" class="room-list loading">加载中…</div>
+  </div>
+
+  <!-- WebSocket 实时状态 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">⚡ 实时事件流</div>
+    </div>
+    <div class="ws-status-row">
+      <div class="dot dot-red" id="ws-inline-dot"></div>
+      <span id="ws-inline-text">未连接</span>
+    </div>
+    <div id="event-list" class="event-list">
+      <div class="event-empty">等待事件…</div>
+    </div>
+  </div>
+
+  <!-- 快速操作 -->
+  <div class="card col-span-2">
+    <div class="card-header">
+      <div class="card-title">🚀 快速操作</div>
+    </div>
+    <div class="action-grid">
+      <button class="btn btn-primary" onclick="refreshDeviceGraph()">
+        🔄 刷新设备图
+      </button>
+      <button class="btn btn-success" onclick="runProactiveCheck()">
+        🔍 立即巡检
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+  // ── 工具 ─────────────────────────────────────────────────
+  function toast(msg, type = 'info') {
+    const c = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast' + (type === 'err' ? ' toast-err' : type === 'ok' ? ' toast-ok' : '');
+    el.textContent = msg;
+    c.appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+  }
+
+  function setDot(dotId, color) {
+    const el = document.getElementById(dotId);
+    if (!el) return;
+    el.className = 'dot dot-' + color + (color === 'green' ? ' dot-pulse' : '');
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('zh-CN', { hour12: false });
+    } catch { return iso; }
+  }
+
+  function nowStr() {
+    return new Date().toLocaleString('zh-CN', { hour12: false });
+  }
+
+  // ── /health ───────────────────────────────────────────────
+  async function fetchHealth() {
+    try {
+      const res = await fetch('/health');
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+
+      const haOk = d.ha === 'ok';
+      setDot('ha-dot', haOk ? 'green' : 'red');
+      document.getElementById('ha-pill').textContent =
+        'HA ' + (haOk ? `✓ (${d.device_count || 0}台)` : (d.ha || '离线'));
+
+      const miOk = d.miloco === 'ok';
+      setDot('miloco-dot', miOk ? 'green' : 'red');
+      document.getElementById('miloco-pill').textContent =
+        'Miloco ' + (miOk ? '✓' : (d.miloco || '离线'));
+    } catch (e) {
+      setDot('ha-dot', 'red');
+      setDot('miloco-dot', 'red');
+      document.getElementById('ha-pill').textContent = 'HA 离线';
+      document.getElementById('miloco-pill').textContent = 'Miloco 离线';
+    }
+    document.getElementById('refresh-time').textContent = '刷新于 ' + nowStr();
+  }
+
+  // ── /api/device_graph/summary ─────────────────────────────
+  async function fetchSummary() {
+    const roomEl = document.getElementById('room-list');
+    try {
+      const res = await fetch('/api/device_graph/summary');
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+
+      const total   = d.total_devices   ?? d.total   ?? '—';
+      const ha      = d.ha_devices      ?? d.ha      ?? '—';
+      const miloco  = d.miloco_devices  ?? d.miloco  ?? '—';
+
+      document.getElementById('sum-total').textContent  = total;
+      document.getElementById('sum-ha').textContent     = ha;
+      document.getElementById('sum-miloco').textContent = miloco;
+      document.getElementById('topbar-total').textContent = total;
+
+      // 按房间分组
+      const rooms = d.rooms_summary ?? d.rooms ?? d.by_room ?? {};
+      if (Object.keys(rooms).length === 0) {
+        roomEl.innerHTML = '<div class="event-empty">暂无房间数据</div>';
+      } else {
+        roomEl.innerHTML = '';
+        roomEl.className = 'room-list';
+        for (const [name, cnt] of Object.entries(rooms)) {
+          const row = document.createElement('div');
+          row.className = 'room-row';
+          row.innerHTML = `<span class="room-name">${name}</span>
+                           <span class="room-count">${cnt} 台</span>`;
+          roomEl.appendChild(row);
         }
+      }
+    } catch (e) {
+      roomEl.innerHTML = `<div class="err-msg">加载失败：${e.message}</div>`;
+    }
+  }
 
-        function showPerceptionAlert(eventType, data) {
-            const msg = data.message || eventType;
-            const toast = document.createElement('div');
-            toast.style.cssText = `
-                position:fixed; bottom:20px; right:20px; z-index:9999;
-                background:#fff; border-left:4px solid #764ba2;
-                padding:12px 16px; border-radius:8px; max-width:300px;
-                box-shadow:0 4px 12px rgba(0,0,0,0.15); font-size:14px;
-                animation: slideIn 0.3s ease;
-            `;
-            toast.textContent = msg;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 5000);
+  // ── /api/proactive/status ─────────────────────────────────
+  async function fetchProactive() {
+    const body = document.getElementById('alert-body');
+    body.innerHTML = '<div class="loading">加载中…</div>';
+    try {
+      const res = await fetch('/api/proactive/status');
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+
+      // 兼容多种响应格式
+      const alerts = d.alerts ?? d.current_alerts ?? d.issues ?? [];
+
+      if (!Array.isArray(alerts) || alerts.length === 0) {
+        body.innerHTML = `
+          <div class="alert-ok">
+            <span class="alert-icon">✅</span>
+            全屋正常，暂无告警
+          </div>`;
+        return;
+      }
+
+      body.innerHTML = '';
+      const list = document.createElement('div');
+      list.className = 'alert-list';
+
+      for (const a of alerts) {
+        const level    = (a.level ?? a.severity ?? 'info').toLowerCase();
+        const icon     = level === 'critical' || level === 'error' ? '🚨'
+                       : level === 'warning'  ? '⚠️'
+                       : 'ℹ️';
+        const cls      = level === 'critical' || level === 'error' ? 'alert-critical'
+                       : level === 'warning'  ? 'alert-warning'
+                       : 'alert-info';
+        const title    = a.title   ?? a.name    ?? a.type    ?? level;
+        const desc     = a.message ?? a.desc    ?? a.details ?? '';
+        const ts       = a.timestamp ?? a.time  ?? '';
+
+        const item = document.createElement('div');
+        item.className = `alert-item ${cls}`;
+        item.innerHTML = `
+          <div class="alert-icon">${icon}</div>
+          <div class="alert-body">
+            <div class="alert-title">${title}</div>
+            ${desc ? `<div class="alert-desc">${desc}</div>` : ''}
+          </div>
+          ${ts ? `<div class="alert-time">${fmtTime(ts)}</div>` : ''}`;
+        list.appendChild(item);
+      }
+      body.appendChild(list);
+    } catch (e) {
+      body.innerHTML = `<div class="err-msg">告警加载失败：${e.message}</div>`;
+    }
+  }
+
+  // ── 快速操作 ──────────────────────────────────────────────
+  async function refreshDeviceGraph() {
+    try {
+      const res = await fetch('/api/device_graph?force_refresh=true', { method: 'POST' });
+      if (!res.ok) throw new Error(res.status);
+      toast('设备图已刷新', 'ok');
+      await fetchSummary();
+    } catch (e) {
+      toast('刷新失败：' + e.message, 'err');
+    }
+  }
+
+  async function runProactiveCheck() {
+    try {
+      const res = await fetch('/api/proactive/check', { method: 'POST' });
+      if (!res.ok) throw new Error(res.status);
+      toast('巡检已触发，正在刷新…', 'ok');
+      setTimeout(fetchProactive, 1000);
+    } catch (e) {
+      toast('巡检触发失败：' + e.message, 'err');
+    }
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────
+  const MAX_EVENTS = 5;
+  let events = [];
+  let ws;
+
+  function wsSetConnected(connected) {
+    const color = connected ? 'green' : 'red';
+    setDot('ws-dot', color);
+    setDot('ws-inline-dot', color);
+    document.getElementById('ws-pill').textContent = 'WS ' + (connected ? '已连接' : '已断开');
+    document.getElementById('ws-inline-text').textContent = connected ? '已连接' : '未连接';
+  }
+
+  function pushEvent(label, body) {
+    const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    events.unshift({ time: now, label, body });
+    if (events.length > MAX_EVENTS) events.length = MAX_EVENTS;
+    renderEvents();
+  }
+
+  function renderEvents() {
+    const el = document.getElementById('event-list');
+    if (events.length === 0) {
+      el.innerHTML = '<div class="event-empty">等待事件…</div>';
+      return;
+    }
+    el.innerHTML = '';
+    for (const e of events) {
+      const item = document.createElement('div');
+      item.className = 'event-item';
+      item.innerHTML = `<span class="event-time">${e.time}</span>
+                        <span class="event-body"><strong>${e.label}</strong> ${e.body}</span>`;
+      el.appendChild(item);
+    }
+  }
+
+  function connectWS() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws/device_graph`);
+
+    ws.onopen = () => {
+      wsSetConnected(true);
+      pushEvent('WS', '连接已建立');
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        const t = msg.type ?? msg.event_type ?? 'message';
+
+        if (t === 'snapshot') {
+          const cnt = (msg.data?.devices ?? []).length;
+          pushEvent('快照', `收到 ${cnt} 台设备`);
+          document.getElementById('topbar-total').textContent = cnt;
+          document.getElementById('sum-total').textContent = cnt;
+        } else if (t === 'update') {
+          const changed = Object.keys(msg.data?.changed_devices ?? {}).length;
+          pushEvent('更新', `${changed} 台设备状态变更`);
+          // 增量更新 DOM 状态标签（兼容旧布局）
+          for (const [id, state] of Object.entries(msg.data?.changed_devices ?? {})) {
+            const el = document.querySelector(`[data-device-id="${id}"] .device-state`);
+            if (el) { el.textContent = state; el.className = `device-state state-${state||'unknown'}`; }
+          }
+        } else if (t === 'perception') {
+          const m = msg.data?.message ?? msg.message ?? t;
+          pushEvent('感知', m);
+          toast('感知事件：' + m);
+        } else if (t === 'proactive_alert') {
+          const m = msg.data?.message ?? msg.message ?? '新告警';
+          pushEvent('告警', m);
+          toast('⚠️ ' + m, 'err');
+          fetchProactive();
+        } else {
+          pushEvent(t, JSON.stringify(msg.data ?? {}).slice(0, 80));
         }
+      } catch (_) {}
+    };
 
-        function connectWebSocket() {
-            ws = new WebSocket(WS_URL);
+    ws.onerror = () => {
+      wsSetConnected(false);
+      pushEvent('WS', '连接错误');
+    };
 
-            ws.onopen = () => {
-                document.getElementById('ws-status').textContent = '已连接';
-            };
-            
-            ws.onmessage = (event) => {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'snapshot') {
-                    renderDevices(msg.data);
-                } else if (msg.type === 'update') {
-                    // 增量更新：刷新变化的设备状态
-                    const changed = msg.data.changed_devices || {};
-                    for (const [id, state] of Object.entries(changed)) {
-                        const el = document.querySelector(`[data-device-id="${id}"] .device-state`);
-                        if (el) {
-                            el.textContent = state;
-                            el.className = `device-state state-${state || 'unknown'}`;
-                        }
-                    }
-                } else if (msg.type === 'perception') {
-                    // 感知事件：顶部 toast 通知
-                    showPerceptionAlert(msg.event_type, msg.data);
-                }
-            };
-            
-            ws.onerror = () => {
-                document.getElementById('ws-status').textContent = '连接错误';
-            };
-            
-            ws.onclose = () => {
-                document.getElementById('ws-status').textContent = '已断开';
-                setTimeout(connectWebSocket, 3000);
-            };
-        }
+    ws.onclose = () => {
+      wsSetConnected(false);
+      pushEvent('WS', '已断开，5 秒后重连…');
+      setTimeout(connectWS, 5000);
+    };
+  }
 
-        function renderDevices(graph) {
-            const { devices, rooms } = graph;
-            
-            // 统计
-            document.getElementById('total-devices').textContent = devices.length;
-            document.getElementById('total-rooms').textContent = Object.keys(rooms).length;
-            document.getElementById('active-devices').textContent = 
-                devices.filter(d => d.state === 'on').length;
-            
-            // 按房间分组渲染
-            const container = document.getElementById('rooms-container');
-            container.innerHTML = '';
-            
-            for (const [room, deviceIds] of Object.entries(rooms)) {
-                const roomDevices = devices.filter(d => deviceIds.includes(d.id));
-                const roomCard = document.createElement('div');
-                roomCard.className = 'room-card';
-                roomCard.innerHTML = `
-                    <h2>${room}</h2>
-                    ${roomDevices.map(d => `
-                        <div class="device" data-device-id="${d.id}">
-                            <div class="device-name">${d.name}</div>
-                            <div class="device-state state-${d.state || 'unknown'}">${d.state || 'unknown'}</div>
-                            <div class="device-controls">
-                                <button class="btn btn-on" onclick="sendCommand('${d.id}', 'turn_on')">开</button>
-                                <button class="btn btn-off" onclick="sendCommand('${d.id}', 'turn_off')">关</button>
-                                <button class="btn btn-toggle" onclick="sendCommand('${d.id}', 'toggle')">切换</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                `;
-                container.appendChild(roomCard);
-            }
-        }
-
-        async function sendCommand(deviceId, command) {
-            try {
-                const res = await fetch(`${API_BASE}/api/device_graph/${deviceId}/command`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command, params: {} })
-                });
-                const result = await res.json();
-                if (!result.success) {
-                    alert(`控制失败: ${result.message}`);
-                }
-            } catch (err) {
-                alert(`请求失败: ${err.message}`);
-            }
-        }
-
-        connectWebSocket();
-        fetchHealth();
-        setInterval(fetchHealth, 30000);  // 每 30 秒刷新一次
-    </script>
+  // ── 启动 ──────────────────────────────────────────────────
+  (function init() {
+    connectWS();
+    fetchHealth();
+    fetchSummary();
+    fetchProactive();
+    // 每 30 秒自动刷新
+    setInterval(() => {
+      fetchHealth();
+      fetchSummary();
+      fetchProactive();
+    }, 30000);
+  })();
+</script>
 </body>
 </html>
