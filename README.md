@@ -1,5 +1,7 @@
 # Lumi 露米
 
+<p align="center">简体中文 | <a href="README.en.md">English</a></p>
+
 > 私有家庭智能体平台 — 将 Miloco 感知、Home Assistant 设备总线、Hermes Agent 大脑整合为一套统一系统。
 
 ---
